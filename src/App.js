@@ -8,7 +8,6 @@ import Privacy from './components/pages/Privacy';
 import Terms from './components/pages/Terms';
 import Help from './components/pages/Help';
 import Contact from './components/pages/Contact';
-import MaintenancePage from './components/pages/MaintenancePage';
 import VideoChat from './components/pages/VideoChat';
 import AudioChat from './components/pages/AudioChat';
 import TextChat from './components/pages/TextChat';

@@ -72,7 +72,7 @@ const AudioVisualizer = ({ stream, isLocal }) => {
       ctx.stroke();
 
       // Draw bars
-      const barWidth = (2 * Math.PI * radius) / bufferLength;
+      // const barWidth = (2 * Math.PI * radius) / bufferLength; // Unused
       
       for (let i = 0; i < bufferLength; i++) {
         const value = dataArray[i];
