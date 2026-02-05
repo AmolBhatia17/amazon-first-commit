@@ -18,15 +18,18 @@ export class MatchmakingService {
    * Attempt to find and create a match following FIFO rules
    * Returns the created session ID or null if no match possible
    */
-  findMatch(): string | null {
-    const searchingUsers = this.stateManager.getSearchingUsers();
+  findMatch(mode: 'video' | 'audio' | 'text'): string | null {
+    const searchingUsers = this.stateManager.getSearchingUsers(mode);
     
     // Prune stale entries
     this.pruneStaleUsers(searchingUsers);
     
     // Need at least 2 users to match
     if (searchingUsers.length < 2) {
-      logger.debug(`No match possible: only ${searchingUsers.length} users searching`);
+      // Only log if not empty (to reduce noise)
+      if (searchingUsers.length > 0) {
+        logger.debug(`No ${mode} match possible: only ${searchingUsers.length} users searching`);
+      }
       return null;
     }
 
@@ -34,7 +37,7 @@ export class MatchmakingService {
     const userA = searchingUsers[0]; // First in queue
     const userB = searchingUsers[1]; // Second in queue
 
-    logger.info(`🔍 FIFO Match attempt: ${userA.userId}(${new Date(userA.enqueuedAt || 0).toISOString()}) <-> ${userB.userId}(${new Date(userB.enqueuedAt || 0).toISOString()})`);
+    logger.info(`🔍 FIFO ${mode} Match attempt: ${userA.userId}(${new Date(userA.enqueuedAt || 0).toISOString()}) <-> ${userB.userId}(${new Date(userB.enqueuedAt || 0).toISOString()})`);
 
     // Determine initiator (first enqueued becomes initiator)
     const initiator = (userA.enqueuedAt || 0) <= (userB.enqueuedAt || 0) ? userA.userId : userB.userId;
@@ -43,9 +46,9 @@ export class MatchmakingService {
     const sessionId = this.stateManager.createSession(userA.userId, userB.userId, initiator);
     
     if (sessionId) {
-      logger.info(`🎯 ✅ Match created: ${userA.userId} <-> ${userB.userId} (session: ${sessionId}, queue now: ${this.getQueueLength()})`);
+      logger.info(`🎯 ✅ ${mode} Match created: ${userA.userId} <-> ${userB.userId} (session: ${sessionId}, queue now: ${this.getQueueLength(mode)})`);
     } else {
-      logger.warn(`❌ Match failed: ${userA.userId} <-> ${userB.userId} - will retry`);
+      logger.warn(`❌ ${mode} Match failed: ${userA.userId} <-> ${userB.userId} - will retry`);
       // Failed matches should retry - both users remain in queue
     }
 
@@ -91,8 +94,8 @@ export class MatchmakingService {
   /**
    * Get current queue length
    */
-  getQueueLength(): number {
-    return this.stateManager.getSearchingUsers().length;
+  getQueueLength(mode: 'video' | 'audio' | 'text' = 'video'): number {
+    return this.stateManager.getSearchingUsers(mode).length;
   }
 
   /**
@@ -124,8 +127,14 @@ export class MatchmakingService {
    * Periodic cleanup task
    */
   performMaintenance(): void {
-    const searchingUsers = this.stateManager.getSearchingUsers();
-    this.pruneStaleUsers(searchingUsers);
+    // Check all queues
+    const videoUsers = this.stateManager.getSearchingUsers('video');
+    const audioUsers = this.stateManager.getSearchingUsers('audio');
+    const textUsers = this.stateManager.getSearchingUsers('text');
+    
+    this.pruneStaleUsers(videoUsers);
+    this.pruneStaleUsers(audioUsers);
+    this.pruneStaleUsers(textUsers);
     
     // Validate system state
     const validation = this.stateManager.validateState();
@@ -141,7 +150,6 @@ export class MatchmakingService {
   getStats() {
     return {
       ...this.stateManager.getStats(),
-      queueLength: this.getQueueLength()
     };
   }
 }

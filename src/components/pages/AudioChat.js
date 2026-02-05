@@ -1,10 +1,11 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiUsers, FiSend, FiSmile } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import AudioVisualizer from '../ui/AudioVisualizer';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -16,7 +17,7 @@ if (typeof window !== 'undefined') {
   window.process = proc;
 }
 
-const VideoChatContainer = styled.div`
+const AudioChatContainer = styled.div`
   height: 100vh;
   max-width: 100vw;
   background: ${({ theme }) => theme.colors.appBg};
@@ -39,7 +40,7 @@ const MainContent = styled.div`
   z-index: 1;
 `;
 
-const VideoSection = styled.div`
+const AudioSection = styled.div`
   display: flex;
   height: 100%;
   gap: 0;
@@ -50,7 +51,7 @@ const VideoSection = styled.div`
   }
 `;
 
-const VideoFeedsContainer = styled.div`
+const AudioFeedsContainer = styled.div`
   width: 35%;
   display: flex;
   flex-direction: column;
@@ -66,7 +67,7 @@ const VideoFeedsContainer = styled.div`
   }
 `;
 
-const VideoFeed = styled.div`
+const AudioFeed = styled.div`
   flex: 1;
   background: #0f0f0f;
   border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -75,6 +76,7 @@ const VideoFeed = styled.div`
   justify-content: center;
   position: relative;
   min-height: 200px;
+  overflow: hidden;
   
   &:last-child {
     border-bottom: none;
@@ -101,14 +103,11 @@ const VideoFeed = styled.div`
   }
 `;
 
-const VideoElement = styled.video`
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #000;
+const HiddenAudioElement = styled.audio`
+  display: none;
 `;
 
-const VideoPlaceholder = styled.div`
+const AudioPlaceholder = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -117,6 +116,7 @@ const VideoPlaceholder = styled.div`
   font-size: 0.9rem;
   text-align: center;
   padding: 20px;
+  z-index: 1;
   
   svg {
     font-size: 2rem;
@@ -125,7 +125,7 @@ const VideoPlaceholder = styled.div`
   }
 `;
 
-const VideoLabel = styled.div`
+const AudioLabel = styled.div`
   position: absolute;
   bottom: 10px;
   left: 10px;
@@ -135,6 +135,7 @@ const VideoLabel = styled.div`
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 600;
+  z-index: 2;
 `;
 
 const RemoteBufferOverlay = styled.div`
@@ -145,10 +146,10 @@ const RemoteBufferOverlay = styled.div`
   justify-content: center;
   pointer-events: none;
   background: linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.75));
-  z-index: 2;
+  z-index: 3;
 `;
 
-const VideoOverlayButton = styled.button`
+const AudioOverlayButton = styled.button`
   position: absolute;
   bottom: 10px;
   right: 10px;
@@ -164,6 +165,7 @@ const VideoOverlayButton = styled.button`
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 1.2rem;
+  z-index: 2;
   
   &:hover {
     background: rgba(29,185,84,0.2);
@@ -185,7 +187,7 @@ const VideoOverlayButton = styled.button`
   }
 `;
 
-const MobileVideoControls = styled.div`
+const MobileAudioControls = styled.div`
   display: none;
   
   @media (max-width: 768px) {
@@ -195,6 +197,7 @@ const MobileVideoControls = styled.div`
     left: 8px;
     gap: 8px;
     align-items: center;
+    z-index: 2;
   }
 `;
 
@@ -255,6 +258,7 @@ const Watermark = styled.div`
   border-radius: 6px;
   backdrop-filter: blur(5px);
   border: 1px solid rgba(29,185,84,0.3);
+  z-index: 2;
   
   @media (max-width: 768px) {
     bottom: 8px;
@@ -296,154 +300,6 @@ const ChatSection = styled.div`
   
   @media (max-width: 768px) {
     height: 60%;
-  }
-`;
-
-const ChatHeader = styled.div`
-  padding: 20px;
-  border-bottom: none;
-  background: transparent;
-`;
-
-const Logo = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  
-  img {
-    height: 40px;
-    width: 40px;
-    border-radius: 8px;
-  }
-`;
-
-const BrandText = styled.span`
-  color: #ffffff;
-  font-family: 'Press Start 2P', cursive, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  font-size: 18px;
-  line-height: 1;
-  letter-spacing: 0.5px;
-`;
-
-
-const StatusMessage = styled.div`
-  color: #F8FAFC;
-  font-size: 1.1rem;
-  margin-bottom: 20px;
-  text-align: center;
-`;
-
-const NewChatButton = styled.button`
-  background: linear-gradient(135deg, #1DB954, #19a64c);
-  color: #0b0b0f;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 15px;
-  width: 100%;
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(29,185,84,0.3);
-  }
-  
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-`;
-
-const InterestSection = styled.div`
-  text-align: center;
-  margin-bottom: 20px;
-`;
-
-const InterestText = styled.div`
-  color: #B3B3B3;
-  font-size: 0.9rem;
-  margin-bottom: 10px;
-`;
-
-const LanguageLink = styled.button`
-  background: none;
-  border: none;
-  color: #1DB954;
-  text-decoration: none;
-  font-size: 0.9rem;
-  cursor: pointer;
-  
-  &:hover {
-    text-decoration: underline;
-  }
-`;
-
-const BottomControlsSection = styled.div`
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 80px;
-  background: rgba(0,0,0,0.9);
-  border-top: 1px solid rgba(29,185,84,0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(10px);
-  z-index: 10;
-  
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const ChatControls = styled.div`
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  
-  @media (max-width: 768px) {
-    gap: 10px;
-  }
-`;
-
-const ControlButton = styled.button`
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.2rem;
-  
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-    transform: translateY(-1px);
-  }
-  
-  &.active {
-    background: #1DB954;
-    color: #000;
-  }
-  
-  &.danger {
-    background: #ff4444;
-    color: #fff;
-    
-    &:hover {
-      background: #ff6666;
-    }
   }
 `;
 
@@ -547,27 +403,10 @@ const ChatMessages = styled.div`
   gap: 8px;
   
   @media (max-width: 768px) {
-    /* Auto-scroll to bottom on mobile */
     scroll-behavior: smooth;
-    
-    /* Hide scrollbar but keep functionality */
-    &::-webkit-scrollbar {
-      width: 4px;
-    }
-    
-    &::-webkit-scrollbar-track {
-      background: rgba(255,255,255,0.1);
-      border-radius: 2px;
-    }
-    
-    &::-webkit-scrollbar-thumb {
-      background: rgba(29,185,84,0.5);
-      border-radius: 2px;
-    }
-    
-    &::-webkit-scrollbar-thumb:hover {
-      background: rgba(29,185,84,0.7);
-    }
+    &::-webkit-scrollbar { width: 4px; }
+    &::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 2px; }
+    &::-webkit-scrollbar-thumb { background: rgba(29,185,84,0.5); border-radius: 2px; }
   }
 `;
 
@@ -635,9 +474,7 @@ const ReplyCancel = styled.button`
   font-size: 0.8rem;
   padding: 2px;
   
-  &:hover {
-    color: #fff;
-  }
+  &:hover { color: #fff; }
 `;
 
 const ReplyIndicator = styled.div`
@@ -686,14 +523,8 @@ const MessageInput = styled.input`
   color: #fff;
   font-size: 0.9rem;
   
-  &:focus {
-    outline: none;
-    border-color: rgba(29,185,84,0.6);
-  }
-  
-  &::placeholder {
-    color: #666;
-  }
+  &:focus { outline: none; border-color: rgba(29,185,84,0.6); }
+  &::placeholder { color: #666; }
   
   @media (max-width: 768px) {
     padding: 12px 16px;
@@ -715,15 +546,9 @@ const SendButton = styled.button`
   justify-content: center;
   transition: all 0.2s ease;
   
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-  }
+  &:hover { background: rgba(29,185,84,0.2); border-color: rgba(29,185,84,0.5); }
   
-  @media (max-width: 768px) {
-    padding: 12px;
-    font-size: 1.2rem;
-  }
+  @media (max-width: 768px) { padding: 12px; font-size: 1.2rem; }
 `;
 
 const EmojiButton = styled.button`
@@ -738,15 +563,9 @@ const EmojiButton = styled.button`
   justify-content: center;
   transition: all 0.2s ease;
   
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-  }
+  &:hover { background: rgba(29,185,84,0.2); border-color: rgba(29,185,84,0.5); }
   
-  @media (max-width: 768px) {
-    padding: 12px;
-    font-size: 1.2rem;
-  }
+  @media (max-width: 768px) { padding: 12px; font-size: 1.2rem; }
 `;
 
 const EmojiPicker = styled.div`
@@ -782,29 +601,12 @@ const EmojiItem = styled.button`
   justify-content: center;
   min-height: 24px;
   
-  &:hover {
-    background: rgba(29,185,84,0.2);
-  }
-`;
-
-
-const pulse = keyframes`
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
+  &:hover { background: rgba(29,185,84,0.2); }
 `;
 
 const spin = keyframes`
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-`;
-
-const WaitingIndicator = styled.div`
-  color: #1DB954;
-  font-size: 0.9rem;
-  text-align: center;
-  animation: ${pulse} 2s ease-in-out infinite;
-  margin-bottom: 20px;
 `;
 
 const BufferSpinner = styled.div`
@@ -828,7 +630,36 @@ const ErrorMessage = styled.div`
   border-radius: 6px;
 `;
 
-function VideoChat() {
+const BottomControlsSection = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: rgba(0,0,0,0.9);
+  border-top: 1px solid rgba(29,185,84,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+  
+  @media (max-width: 768px) {
+    display: none;
+  }
+`;
+
+const ChatControls = styled.div`
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  
+  @media (max-width: 768px) {
+    gap: 10px;
+  }
+`;
+
+function AudioChat() {
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -844,8 +675,7 @@ function VideoChat() {
   const [showRemoteBuffer, setShowRemoteBuffer] = useState(false);
   const hasRemoteStreamRef = useRef(false);
   
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const localStreamRef = useRef(null);
   const messagesEndRef = useRef(null);
   const peerConnectionRef = useRef(null);
@@ -853,6 +683,9 @@ function VideoChat() {
   const isInitiatorRef = useRef(false);
   const remoteStreamRef = useRef(null);
   const remoteBufferTimerRef = useRef(null);
+  
+  // New state for visualizer
+  const [remoteStreamForVisualizer, setRemoteStreamForVisualizer] = useState(null);
 
   // WebRTC configuration
   const rtcConfig = {
@@ -867,10 +700,11 @@ function VideoChat() {
       peerConnectionRef.current.destroy?.();
       peerConnectionRef.current = null;
     }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
     }
     remoteStreamRef.current = null;
+    setRemoteStreamForVisualizer(null);
     partnerIdRef.current = null;
     hasRemoteStreamRef.current = false;
   };
@@ -880,8 +714,8 @@ function VideoChat() {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
     }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
     }
     setHasLocalStream(false);
     setShowRemoteBuffer(false);
@@ -899,7 +733,6 @@ function VideoChat() {
       remoteBufferTimerRef.current = null;
     }
     
-    // If keepVisible is true (for queue waiting), don't auto-hide
     if (!keepVisible) {
       remoteBufferTimerRef.current = setTimeout(() => {
         setShowRemoteBuffer(false);
@@ -908,30 +741,22 @@ function VideoChat() {
     }
   };
 
-  const startVideo = async () => {
+  const startAudio = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: false,
         audio: true
       });
 
       localStreamRef.current = stream;
       setHasLocalStream(true);
-
-      // Set local video immediately
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-        localVideoRef.current.play().catch(err => {
-          console.error('Error playing local video:', err);
-        });
-      }
       
       setIsWaiting(true);
       setError('');
       return true;
     } catch (err) {
-      setError('Camera blocked. Please enable it and try again.');
-      console.error('Error accessing camera:', err);
+      setError('Microphone blocked. Please enable it and try again.');
+      console.error('Error accessing microphone:', err);
       setIsStarted(false);
       return false;
     }
@@ -940,13 +765,13 @@ function VideoChat() {
   const setupWebRTC = async (isInitiator) => {
     try {
       if (!localStreamRef.current) {
-        setError('Camera/stream not ready. Please allow camera access and retry.');
+        setError('Microphone not ready. Please allow access and retry.');
         return;
       }
 
       const peer = new SimplePeer({
         initiator: isInitiator,
-        trickle: false, // send complete SDP to reduce mid-call ICE issues
+        trickle: false,
         stream: localStreamRef.current,
         config: rtcConfig,
       });
@@ -962,6 +787,7 @@ function VideoChat() {
       peer.on('stream', (remoteStream) => {
         console.log('Peer stream event', remoteStream);
         remoteStreamRef.current = remoteStream;
+        setRemoteStreamForVisualizer(remoteStream);
         applyRemoteStream();
         setIsConnected(true);
         setIsWaiting(false);
@@ -969,13 +795,13 @@ function VideoChat() {
         hasRemoteStreamRef.current = true;
       });
 
-      // Fallback for browsers emitting 'track'
       peer.on('track', (track, stream) => {
         console.log('Peer track event', track, stream);
         if (!remoteStreamRef.current) {
           remoteStreamRef.current = new MediaStream();
         }
         remoteStreamRef.current.addTrack(track);
+        setRemoteStreamForVisualizer(remoteStreamRef.current);
         track.onunmute = () => {
           applyRemoteStream();
         };
@@ -1020,14 +846,12 @@ function VideoChat() {
       if (pc) {
         pc.oniceconnectionstatechange = () => {
           const state = pc.iceConnectionState;
-          console.log('ICE state', state);
           if (state === 'failed' || state === 'disconnected' || state === 'closed') {
             resetForRequeue('Connection lost. Rejoining queue...');
           }
         };
         pc.onconnectionstatechange = () => {
           const state = pc.connectionState;
-          console.log('Peer connection state', state);
           if (state === 'failed' || state === 'disconnected' || state === 'closed') {
             resetForRequeue('Connection lost. Rejoining queue...');
           }
@@ -1041,46 +865,21 @@ function VideoChat() {
 
   const handleWebRTCSignal = async (data) => {
     const pc = peerConnectionRef.current;
-    if (!pc) {
-      console.warn('Dropping signal - no peer connection');
-      return;
-    }
+    if (!pc) return;
 
     try {
       const { signal } = data;
       if (signal) {
-        // Ignore signals from previous partner
-        if (data.from && partnerIdRef.current && data.from !== partnerIdRef.current) {
-          console.warn('Dropping signal from old partner', data.from);
-          return;
-        }
-        // Role-based guards to avoid wrong-state errors
-        if (signal.type === 'offer' && isInitiatorRef.current) {
-          console.warn('Initiator dropping unexpected offer');
-          return;
-        }
-        if (signal.type === 'answer' && !isInitiatorRef.current) {
-          console.warn('Receiver dropping unexpected answer');
-          return;
-        }
-        // Signaling-state guards to avoid stable-state errors
+        if (data.from && partnerIdRef.current && data.from !== partnerIdRef.current) return;
+        if (signal.type === 'offer' && isInitiatorRef.current) return;
+        if (signal.type === 'answer' && !isInitiatorRef.current) return;
+        
         const state = pc._pc?.signalingState;
         if (signal.type === 'answer') {
-          if (state === 'stable') {
-            console.warn('Dropping late answer in stable state');
-            return;
-          }
-          if (state && state !== 'have-local-offer' && state !== 'have-remote-pranswer') {
-            console.warn('Dropping answer in state', state);
-            return;
-          }
+          if (state === 'stable' || (state && state !== 'have-local-offer' && state !== 'have-remote-pranswer')) return;
         }
         if (signal.type === 'offer') {
-          // Only accept offers when we are idle/stable (non-initiator)
-          if (state && state !== 'stable') {
-            console.warn('Dropping offer in non-stable state', state);
-            return;
-          }
+          if (state && state !== 'stable') return;
         }
         pc.signal(signal);
       }
@@ -1088,7 +887,6 @@ function VideoChat() {
       console.error('Error handling signal:', error);
     }
   };
-
 
   const toggleAudio = () => {
     if (localStreamRef.current) {
@@ -1101,21 +899,16 @@ function VideoChat() {
   };
 
   const applyRemoteStream = () => {
-    if (remoteStreamRef.current && remoteVideoRef.current) {
-      const video = remoteVideoRef.current;
-      if (video.srcObject !== remoteStreamRef.current) {
-        video.srcObject = remoteStreamRef.current;
+    if (remoteStreamRef.current && remoteAudioRef.current) {
+      const audio = remoteAudioRef.current;
+      if (audio.srcObject !== remoteStreamRef.current) {
+        audio.srcObject = remoteStreamRef.current;
       }
-      video.muted = true;
-      video.volume = 1;
-      video.play?.().catch((err) => {
+      audio.play?.().catch((err) => {
         if (err?.name !== 'AbortError') {
           console.error('Remote play error', err);
         }
       });
-      setTimeout(() => {
-        if (remoteVideoRef.current) remoteVideoRef.current.muted = false;
-      }, 200);
     }
   };
 
@@ -1126,16 +919,15 @@ function VideoChat() {
     setMessages([]);
     setReplyingTo(null);
     setAudioEnabled(true);
-    setError(''); // Clear any connection errors
+    setError('');
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
     cleanupPeer();
-    triggerRemoteBuffer(true); // Keep visible while waiting in queue
-    // Small delay to ensure cleanup is complete before rejoining at END of queue (FIFO)
+    triggerRemoteBuffer(true);
     setTimeout(() => {
-      socketService.send({ type: 'join' });
-      console.log('[socket] 🔄 rejoining queue at END (FIFO) - no reconnection restrictions');
+      socketService.send({ type: 'join', mode: 'audio' });
+      console.log('[socket] 🔄 rejoining AUDIO queue');
     }, 100);
   };
 
@@ -1147,14 +939,12 @@ function VideoChat() {
       setError('');
       setIsStarted(false);
 
-      // Start video stream; if fails, abort
-      const ok = await startVideo();
+      const ok = await startAudio();
       if (!ok) {
         setIsStarted(false);
         return;
       }
 
-      // Connect WS and join queue
       const socket = await socketService.connect().catch(() => null);
       if (!socket) {
         setError('Unable to connect to server. Please try again.');
@@ -1165,8 +955,8 @@ function VideoChat() {
       setIsStarted(true);
       setIsWaiting(true);
       setWaitingMessage('Looking for a partner...');
-      triggerRemoteBuffer(true); // Keep visible until matched
-      socketService.send({ type: 'join' });
+      triggerRemoteBuffer(true);
+      socketService.send({ type: 'join', mode: 'audio' });
     } catch (err) {
       setError('Failed to start chat. Please try again.');
       console.error('Error starting chat:', err);
@@ -1175,7 +965,6 @@ function VideoChat() {
   };
 
   const stopChat = () => {
-    // Send leave message before cleanup
     if (isStarted) {
       socketService.send({ type: 'leave' });
     }
@@ -1200,7 +989,6 @@ function VideoChat() {
       setIsWaiting(false);
       setWaitingMessage('');
       setShowRemoteBuffer(false);
-      console.log('[ws] cancelled search');
     }
   };
 
@@ -1208,28 +996,24 @@ function VideoChat() {
     if (!isStarted) return;
     
     cleanupPeer();
-    
     setIsConnected(false);
     setIsWaiting(true);
     setWaitingMessage('');
     setMessages([]);
     setReplyingTo(null);
-    setError(''); // Clear errors immediately
-    triggerRemoteBuffer(true); // Keep visible while waiting in queue
-    // reset audio state to default enabled
+    setError('');
+    triggerRemoteBuffer(true);
     setAudioEnabled(true);
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
     
-    // Notify server with delay to ensure cleanup
     const socket = socketService.getSocket() || await socketService.connect().catch(() => null);
     if (socket) {
       socketService.send({ type: 'skip' });
-      // Small delay before rejoining to avoid race conditions
       setTimeout(() => {
-        socketService.send({ type: 'join' });
-        console.log('[socket] ⏭️ skipped + rejoining at END of queue (FIFO), reconnections allowed');
+        socketService.send({ type: 'join', mode: 'audio' });
+        console.log('[socket] ⏭️ skipped + rejoining AUDIO queue');
       }, 100);
     } else {
       setError('Unable to reconnect. Please restart.');
@@ -1279,21 +1063,15 @@ function VideoChat() {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      sendMessage();
-    }
+    if (e.key === 'Enter') sendMessage();
   };
 
-  const toggleEmojiPicker = () => {
-    setShowEmojiPicker(!showEmojiPicker);
-  };
-
+  const toggleEmojiPicker = () => setShowEmojiPicker(!showEmojiPicker);
   const addEmoji = (emoji) => {
     setNewMessage(prev => prev + emoji);
     setShowEmojiPicker(false);
   };
 
-  // Handle keyboard popup on mobile
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth <= 768) {
@@ -1303,20 +1081,17 @@ function VideoChat() {
         setKeyboardHeight(keyboardHeight > 0 ? keyboardHeight : 0);
       }
     };
-
     const handleVisualViewportChange = () => {
       if (window.visualViewport) {
         const keyboardHeight = window.innerHeight - window.visualViewport.height;
         setKeyboardHeight(keyboardHeight > 0 ? keyboardHeight : 0);
       }
     };
-
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', handleVisualViewportChange);
     } else {
       window.addEventListener('resize', handleResize);
     }
-
     return () => {
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', handleVisualViewportChange);
@@ -1330,50 +1105,20 @@ function VideoChat() {
     setReplyingTo(message);
     setShowEmojiPicker(false);
   };
+  const cancelReply = () => setReplyingTo(null);
 
-  const cancelReply = () => {
-    setReplyingTo(null);
-  };
-
-  // Ensure local video displays when stream is available
-  useEffect(() => {
-    const updateLocalVideo = () => {
-      if (localStreamRef.current && localVideoRef.current) {
-        const video = localVideoRef.current;
-        if (video.srcObject !== localStreamRef.current) {
-          video.srcObject = localStreamRef.current;
-          video.play().catch(err => {
-            console.error('Error playing local video:', err);
-          });
-        }
-      }
-    };
-
-    // Update immediately
-    updateLocalVideo();
-
-    // Also update when video element becomes available
-    const videoElement = localVideoRef.current;
-    if (videoElement) {
-      videoElement.addEventListener('loadedmetadata', updateLocalVideo);
-      return () => {
-        videoElement.removeEventListener('loadedmetadata', updateLocalVideo);
-      };
-    }
-  }, [isStarted, hasLocalStream]);
-
-  // Ensure remote video attaches when stream arrives or element mounts
+  // Ensure remote audio attaches when stream arrives or element mounts
   useEffect(() => {
     applyRemoteStream();
-    const videoElement = remoteVideoRef.current;
-    if (videoElement) {
+    const audioElement = remoteAudioRef.current;
+    if (audioElement) {
       const handler = () => applyRemoteStream();
-      videoElement.addEventListener('loadedmetadata', handler);
-      return () => videoElement.removeEventListener('loadedmetadata', handler);
+      audioElement.addEventListener('loadedmetadata', handler);
+      return () => audioElement.removeEventListener('loadedmetadata', handler);
     }
   }, [isConnected]);
 
-  // Waiting message timeout to avoid infinite spinner UX
+  // Waiting message timeout
   useEffect(() => {
     let timer;
     if (isWaiting && !isConnected) {
@@ -1396,7 +1141,7 @@ function VideoChat() {
       cleanupStreams();
       socketService.disconnect();
     };
-  }, []); // Only run on mount/unmount
+  }, []);
 
   // Setup socket event listeners
   useEffect(() => {
@@ -1407,34 +1152,24 @@ function VideoChat() {
       setReplyingTo(null);
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
-      // Use timed buffer for connection phase
       triggerRemoteBuffer(false);
       
-      console.log('[ws] 🎯 matched with', data.partnerId, '- reconnections allowed, FIFO matching');
+      console.log('[ws] 🎯 matched with', data.partnerId);
       
       if (!localStreamRef.current) {
-        setError('Camera not ready. Please allow camera access.');
+        setError('Microphone not ready.');
         return;
       }
 
-      // Acknowledge the match to follow Omegle rules
       socketService.send({ type: 'acknowledge' });
-      console.log('[ws] acknowledged match with', data.partnerId);
-      
       await setupWebRTC(data.initiator);
     };
 
-    const handleSessionReady = () => {
-      console.log('[ws] session is now fully active');
-      setWaitingMessage('Connected!');
-      // Session is now ready for full communication
-    };
-
+    const handleSessionReady = () => setWaitingMessage('Connected!');
     const handleSearchCancelled = () => {
       setIsWaiting(false);
       setWaitingMessage('');
       setShowRemoteBuffer(false);
-      console.log('[ws] search was cancelled');
     };
 
     const handleSignal = (data) => {
@@ -1442,30 +1177,18 @@ function VideoChat() {
       handleWebRTCSignal({ signal: data.data });
     };
 
-    const handlePartnerLeft = () => {
-      resetForRequeue('Partner disconnected. Rejoining queue...');
-    };
-
-    const handlePartnerSkipped = () => {
-      resetForRequeue('Partner skipped. Rejoining queue...');
-    };
+    const handlePartnerLeft = () => resetForRequeue('Partner disconnected. Rejoining queue...');
+    const handlePartnerSkipped = () => resetForRequeue('Partner skipped. Rejoining queue...');
 
     const handleQueue = (data) => {
       setIsWaiting(true);
       setIsConnected(false);
       const position = data.position || 1;
-      if (position === 1) {
-        setWaitingMessage('Looking for a partner...');
-      } else {
-        setWaitingMessage(`In queue (position ${position}) - FIFO order`);
-      }
-      // Keep buffer visible while in queue
+      setWaitingMessage(position === 1 ? 'Looking for a partner...' : `In queue (position ${position})`);
       triggerRemoteBuffer(true);
-      console.log('[ws] queue position', position, '- following FIFO, no reconnection restrictions');
     };
 
     const handleError = (error) => {
-      // Suppress all visible UI errors as requested, especially "Already in session"
       const msg = error.message || error?.data || '';
       if (!msg.toLowerCase().includes('already in session') && !msg.toLowerCase().includes('already searching')) {
         console.error('WS error:', error);
@@ -1494,186 +1217,177 @@ function VideoChat() {
   }, [isStarted]);
 
   return (
-    <VideoChatContainer>
-      <Header 
-        logo="Unitalks"
-        hasSidebar={false}
-      />
+    <AudioChatContainer>
+      <Header logo="Unitalks" hasSidebar={false} />
       
       <MainContent>
-        <VideoSection>
-          <VideoFeedsContainer>
-            <VideoFeed>
-              <VideoElement
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                style={{ visibility: isConnected ? 'visible' : 'hidden' }}
-              />
-              {!isConnected && (
-                <VideoPlaceholder style={{ position: 'absolute', inset: 0 }}>
+        <AudioSection>
+          <AudioFeedsContainer>
+            {/* Hidden Audio Element for playing remote sound */}
+            <HiddenAudioElement ref={remoteAudioRef} autoPlay />
+
+            {/* Remote Audio Visualizer */}
+            <AudioFeed>
+              {isConnected && remoteStreamForVisualizer ? (
+                <AudioVisualizer stream={remoteStreamForVisualizer} isLocal={false} />
+              ) : (
+                <AudioPlaceholder style={{ position: 'absolute', inset: 0 }}>
                   <FiUsers />
                   <div>Stranger</div>
-                </VideoPlaceholder>
+                </AudioPlaceholder>
               )}
               {showRemoteBuffer && (
                 <RemoteBufferOverlay>
                   <BufferSpinner />
                 </RemoteBufferOverlay>
               )}
-              <VideoLabel>Stranger</VideoLabel>
+              <AudioLabel>Stranger</AudioLabel>
               <Watermark>
                 <WatermarkLogo src="/assets/logos/logo.png" alt="UniTalks Logo" />
                 <WatermarkText>UniTalks</WatermarkText>
               </Watermark>
-            </VideoFeed>
+            </AudioFeed>
             
-                    <VideoFeed>
-                      {hasLocalStream ? (
-                        <VideoElement
-                          ref={localVideoRef}
-                          autoPlay
-                          muted
-                          playsInline
-                          style={{ transform: 'scaleX(-1)' }} // Mirror effect for self-view
-                        />
-                      ) : (
-                        <VideoPlaceholder>
-                          <FiVideo />
-                          <div>Your Camera</div>
-                        </VideoPlaceholder>
-                      )}
-                      <VideoOverlayButton
-                        onClick={toggleAudio}
-                        className={audioEnabled ? 'active' : ''}
-                        title={audioEnabled ? 'Mute microphone' : 'Unmute microphone'}
-                      >
-                        {audioEnabled ? <FiMic /> : <FiMicOff />}
-                      </VideoOverlayButton>
-                      <MobileVideoControls>
-                        <MobileControlButton
-                          onClick={skipPartner}
-                          className="skip"
-                          title="Skip to next stranger"
-                          disabled={!isStarted}
-                          style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
-                        >
-                          SKIP
-                        </MobileControlButton>
-                        <MobileControlButton
-                          onClick={isStarted ? stopChat : startNewChat}
-                          className={isStarted ? 'stop' : 'start'}
-                          title={isStarted ? "Stop chat" : "Start new chat"}
-                        >
-                          {isStarted ? 'STOP' : 'START'}
-                        </MobileControlButton>
-                      </MobileVideoControls>
-                    </VideoFeed>
-          </VideoFeedsContainer>
+            {/* Local Audio Visualizer */}
+            <AudioFeed>
+              {hasLocalStream && localStreamRef.current ? (
+                <AudioVisualizer stream={localStreamRef.current} isLocal={true} />
+              ) : (
+                <AudioPlaceholder>
+                  <FiMic />
+                  <div>Your Mic</div>
+                </AudioPlaceholder>
+              )}
+              <AudioOverlayButton
+                onClick={toggleAudio}
+                className={audioEnabled ? 'active' : ''}
+                title={audioEnabled ? 'Mute microphone' : 'Unmute microphone'}
+              >
+                {audioEnabled ? <FiMic /> : <FiMicOff />}
+              </AudioOverlayButton>
+              <MobileAudioControls>
+                <MobileControlButton
+                  onClick={skipPartner}
+                  className="skip"
+                  title="Skip to next stranger"
+                  disabled={!isStarted}
+                  style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
+                >
+                  SKIP
+                </MobileControlButton>
+                <MobileControlButton
+                  onClick={isStarted ? stopChat : startNewChat}
+                  className={isStarted ? 'stop' : 'start'}
+                  title={isStarted ? "Stop chat" : "Start new chat"}
+                >
+                  {isStarted ? 'STOP' : 'START'}
+                </MobileControlButton>
+              </MobileAudioControls>
+            </AudioFeed>
+          </AudioFeedsContainer>
           
           <ChatSection>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
              
-                   <ChatBox $keyboardHeight={keyboardHeight}>
-                     <ChatMessages>
-                       {messages.map((message) => (
-                         <Message 
-                           key={message.id} 
-                           className={message.isOwn ? 'own' : 'other'}
-                           onClick={() => replyToMessage(message)}
-                         >
-                           {message.replyTo && (
-                             <ReplyIndicator>
-                               <ReplyText>
-                                 Replying to {message.replyTo.isOwn ? 'yourself' : 'stranger'}
-                               </ReplyText>
-                               <ReplyContentSmall>
-                                 {message.replyTo.text}
-                               </ReplyContentSmall>
-                             </ReplyIndicator>
-                           )}
-                           {message.text}
-                         </Message>
-                       ))}
-                       <div ref={messagesEndRef} />
-                     </ChatMessages>
-                 <ChatInput>
-                   {replyingTo && (
-                     <ReplyPreview>
-                       <ReplyText>
-                         Replying to {replyingTo.isOwn ? 'yourself' : 'stranger'}
-                       </ReplyText>
-                       <ReplyContent>
-                         {replyingTo.text}
-                       </ReplyContent>
-                       <ReplyCancel onClick={cancelReply}>
-                         ✕
-                       </ReplyCancel>
-                     </ReplyPreview>
-                   )}
-                   <InputRow>
-                     <MessageInput
-                       type="text"
-                       placeholder={replyingTo ? "Type your reply..." : "Type a message..."}
-                       value={newMessage}
-                       onChange={(e) => setNewMessage(e.target.value)}
-                       onKeyPress={handleKeyPress}
-                     />
-                     <EmojiButton onClick={toggleEmojiPicker}>
-                       <FiSmile />
-                     </EmojiButton>
-                     <SendButton onClick={sendMessage}>
-                       <FiSend />
-                     </SendButton>
-                   </InputRow>
-                   {showEmojiPicker && (
-                     <EmojiPicker>
-                       {['😀', '😂', '😍', '🥰', '😎', '🤔', '😢', '😡', '👍', '👎', '❤️', '🔥', '🎉', '💯', '👏', '🙌', '😊', '😘', '🤗', '😴', '🤤', '😋', '🥳', '😇', '😮', '😯', '😲', '😳', '😵', '😶', '😷', '🤒'].map((emoji) => (
-                         <EmojiItem key={emoji} onClick={() => addEmoji(emoji)}>
-                           {emoji}
-                         </EmojiItem>
-                       ))}
-                     </EmojiPicker>
-                   )}
-                 </ChatInput>
-             </ChatBox>
+            <ChatBox $keyboardHeight={keyboardHeight}>
+              <ChatMessages>
+                {messages.map((message) => (
+                  <Message 
+                    key={message.id} 
+                    className={message.isOwn ? 'own' : 'other'}
+                    onClick={() => replyToMessage(message)}
+                  >
+                    {message.replyTo && (
+                      <ReplyIndicator>
+                        <ReplyText>
+                          Replying to {message.replyTo.isOwn ? 'yourself' : 'stranger'}
+                        </ReplyText>
+                        <ReplyContentSmall>
+                          {message.replyTo.text}
+                        </ReplyContentSmall>
+                      </ReplyIndicator>
+                    )}
+                    {message.text}
+                  </Message>
+                ))}
+                <div ref={messagesEndRef} />
+              </ChatMessages>
+              <ChatInput>
+                {replyingTo && (
+                  <ReplyPreview>
+                    <ReplyText>
+                      Replying to {replyingTo.isOwn ? 'yourself' : 'stranger'}
+                    </ReplyText>
+                    <ReplyContent>
+                      {replyingTo.text}
+                    </ReplyContent>
+                    <ReplyCancel onClick={cancelReply}>
+                      ✕
+                    </ReplyCancel>
+                  </ReplyPreview>
+                )}
+                <InputRow>
+                  <MessageInput
+                    type="text"
+                    placeholder={replyingTo ? "Type your reply..." : "Type a message..."}
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                  />
+                  <EmojiButton onClick={toggleEmojiPicker}>
+                    <FiSmile />
+                  </EmojiButton>
+                  <SendButton onClick={sendMessage}>
+                    <FiSend />
+                  </SendButton>
+                </InputRow>
+                {showEmojiPicker && (
+                  <EmojiPicker>
+                    {['😀', '😂', '😍', '🥰', '😎', '🤔', '😢', '😡', '👍', '👎', '❤️', '🔥', '🎉', '💯', '👏', '🙌', '😊', '😘', '🤗', '😴', '🤤', '😋', '🥳', '😇', '😮', '😯', '😲', '😳', '😵', '😶', '😷', '🤒'].map((emoji) => (
+                      <EmojiItem key={emoji} onClick={() => addEmoji(emoji)}>
+                        {emoji}
+                      </EmojiItem>
+                    ))}
+                  </EmojiPicker>
+                )}
+              </ChatInput>
+            </ChatBox>
              
-                   <BottomControlsSection>
-                     <ChatControls>
-                      <SkipButton
-                        onClick={skipPartner}
-                        title="Skip to next stranger"
-                        disabled={!isStarted}
-                        style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
-                      >
-                        SKIP
-                      </SkipButton>
-                      
-                      {isWaiting && !isConnected ? (
-                        <StartStopButton 
-                          onClick={cancelSearch}
-                          $isStarted={false}
-                          title="Cancel search"
-                        >
-                          CANCEL
-                        </StartStopButton>
-                      ) : (
-                        <StartStopButton 
-                          onClick={isStarted ? stopChat : startNewChat}
-                          $isStarted={isStarted}
-                          title={isStarted ? "Stop chat" : "Start new chat"}
-                        >
-                          {isStarted ? "STOP" : "START"}
-                        </StartStopButton>
-                      )}
-                     </ChatControls>
-                   </BottomControlsSection>
+            <BottomControlsSection>
+              <ChatControls>
+                <SkipButton
+                  onClick={skipPartner}
+                  title="Skip to next stranger"
+                  disabled={!isStarted}
+                  style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
+                >
+                  SKIP
+                </SkipButton>
+                
+                {isWaiting && !isConnected ? (
+                  <StartStopButton 
+                    onClick={cancelSearch}
+                    $isStarted={false}
+                    title="Cancel search"
+                  >
+                    CANCEL
+                  </StartStopButton>
+                ) : (
+                  <StartStopButton 
+                    onClick={isStarted ? stopChat : startNewChat}
+                    $isStarted={isStarted}
+                    title={isStarted ? "Stop chat" : "Start new chat"}
+                  >
+                    {isStarted ? "STOP" : "START"}
+                  </StartStopButton>
+                )}
+              </ChatControls>
+            </BottomControlsSection>
           </ChatSection>
-        </VideoSection>
+        </AudioSection>
       </MainContent>
-      
-    </VideoChatContainer>
+    </AudioChatContainer>
   );
 }
 
-export default VideoChat;
+export default AudioChat;

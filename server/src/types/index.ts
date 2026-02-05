@@ -14,7 +14,7 @@ export enum UserState {
 }
 
 export type ClientMessage =
-  | { type: 'join' }
+  | { type: 'join'; mode?: 'video' | 'audio' | 'text' }
   | { type: 'signal'; signalType: 'offer' | 'answer' | 'ice'; data: unknown }
   | { type: 'skip' }
   | { type: 'leave' }
@@ -42,6 +42,7 @@ export interface Session {
   lastActivity: number;
   acknowledgedBy: Set<string>;
   state: 'pending' | 'active' | 'ended';
+  mode: 'video' | 'audio' | 'text';
 }
 
 export interface QueueEntry {
@@ -58,4 +59,10 @@ export interface UserRecord {
   skipCount: number;
   lastSkipTime: number;
   enqueuedAt?: number;
+  mode: 'video' | 'audio' | 'text';
+}
+
+export interface WsClient extends import('ws').WebSocket {
+  isAlive: boolean;
+  userId: string;
 }

@@ -52,24 +52,58 @@ function send(userId: string, message: ServerMessage): boolean {
   }
 }
 
-// Utility function for broadcasting to multiple users
-// function broadcast(userIds: string[], message: ServerMessage): void {
-//   userIds.forEach(userId => send(userId, message));
-// }
-
 // ═══════════════════════════════════════════════════════════════
 // 🎯 CORE MATCHMAKING FLOW
 // ═══════════════════════════════════════════════════════════════
 
 function attemptMatch(): void {
-  const sessionId = matchmaking.findMatch();
-  if (!sessionId) return;
-
-  const session = stateManager.getSession(sessionId);
-  if (!session) return;
-
-  const { userA, userB } = session;
+  // Try to match as many pairs as possible in each mode
+  // The while loop ensures we consume the queue until < 2 users remain
   
+  // 1. Video Queue
+  let videoMatched = true;
+  while (videoMatched) {
+    const sessionId = matchmaking.findMatch('video');
+    if (sessionId) {
+      const session = stateManager.getSession(sessionId);
+      if (session) {
+        handleMatchSuccess(session.userA, session.userB, sessionId, 'video');
+      }
+    } else {
+      videoMatched = false;
+    }
+  }
+
+  // 2. Audio Queue
+  let audioMatched = true;
+  while (audioMatched) {
+    const sessionId = matchmaking.findMatch('audio');
+    if (sessionId) {
+      const session = stateManager.getSession(sessionId);
+      if (session) {
+        handleMatchSuccess(session.userA, session.userB, sessionId, 'audio');
+      }
+    } else {
+      audioMatched = false;
+    }
+  }
+
+  // 3. Text Queue
+  let textMatched = true;
+  while (textMatched) {
+    const sessionId = matchmaking.findMatch('text');
+    if (sessionId) {
+      const session = stateManager.getSession(sessionId);
+      if (session) {
+        handleMatchSuccess(session.userA, session.userB, sessionId, 'text');
+      }
+    } else {
+      textMatched = false;
+    }
+  }
+}
+
+function handleMatchSuccess(userA: string, userB: string, sessionId: string, mode: 'video' | 'audio' | 'text'): void {
   // Determine initiator (first user is initiator)
   const userARecord = stateManager.getUser(userA);
   const userBRecord = stateManager.getUser(userB);
@@ -82,21 +116,37 @@ function attemptMatch(): void {
   const initiator = (userARecord.enqueuedAt || 0) <= (userBRecord.enqueuedAt || 0) ? userA : userB;
 
   // Send match notifications
-  send(userA, { 
+  const sentA = send(userA, { 
     type: 'matched', 
     partnerId: userB, 
     initiator: initiator === userA,
     sessionId 
   });
   
-  send(userB, { 
+  const sentB = send(userB, { 
     type: 'matched', 
     partnerId: userA, 
     initiator: initiator === userB,
     sessionId 
   });
 
-  logger.info(`🎯 Match sent: ${userA} <-> ${userB} (session: ${sessionId})`);
+  if (!sentA || !sentB) {
+    logger.warn(`❌ Match notification failed for session ${sessionId} (A: ${sentA}, B: ${sentB}) - rolling back`);
+    stateManager.endSession(sessionId);
+    
+    // Requeue the user who successfully received the message (if any)
+    if (sentA) {
+      matchmaking.enqueueUser(userA);
+      send(userA, { type: 'error', message: 'Partner connection failed, searching again...' });
+    }
+    if (sentB) {
+      matchmaking.enqueueUser(userB);
+      send(userB, { type: 'error', message: 'Partner connection failed, searching again...' });
+    }
+    return;
+  }
+
+  logger.info(`🎯 ${mode} Match sent: ${userA} <-> ${userB} (session: ${sessionId})`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -181,6 +231,9 @@ wss.on('connection', (ws, request) => {
         // 1️⃣ JOIN QUEUE - Enqueue Rules Implementation
         // ───────────────────────────────────────────────────────────
         case 'join': {
+          const mode = message.mode || 'video';
+          stateManager.setMode(userId, mode);
+          
           const result = matchmaking.enqueueUser(userId);
           
           if (!result.success) {
@@ -190,7 +243,7 @@ wss.on('connection', (ws, request) => {
 
           // Send queue position
           send(userId, { type: 'queue', position: result.queuePosition || 1 });
-          logger.info(`📥 ${userId} joined queue (position: ${result.queuePosition})`);
+          logger.info(`📥 ${userId} joined ${mode} queue (position: ${result.queuePosition})`);
 
           // Attempt matchmaking
           attemptMatch();
@@ -278,6 +331,7 @@ wss.on('connection', (ws, request) => {
             send(skipResult.partner, { type: 'partner-skipped' });
             
             // Requeue skipped partner at END of queue (FIFO rule)
+            // Note: Their mode remains set from previous join
             const partnerEnqueue = matchmaking.enqueueUser(skipResult.partner);
             if (partnerEnqueue.success) {
               send(skipResult.partner, { type: 'queue', position: partnerEnqueue.queuePosition || 1 });
@@ -345,9 +399,8 @@ wss.on('connection', (ws, request) => {
 
 const heartbeatTimer = setInterval(() => {
   const stats = stateManager.getStats();
-  const totalUsers = stats.totalUsers;
   
-  logger.info(`💓 Heartbeat: ${totalUsers} users, ${stats.activeSessions} sessions, ${stats.searchingUsers} searching`);
+  logger.info(`💓 Heartbeat: ${stats.totalUsers} users, ${stats.activeSessions} sessions, V:${stats.searchingVideo}/A:${stats.searchingAudio}/T:${stats.searchingText} searching`);
 
   wss.clients.forEach((ws) => {
     if (ws.readyState === ws.OPEN) {

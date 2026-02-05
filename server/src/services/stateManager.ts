@@ -27,7 +27,8 @@ export class StateManager {
       state: UserState.IDLE,
       lastPong: Date.now(),
       skipCount: 0,
-      lastSkipTime: 0
+      lastSkipTime: 0,
+      mode: 'video' // Default
     };
 
     this.users.set(userId, user);
@@ -66,6 +67,14 @@ export class StateManager {
     const user = this.users.get(userId);
     if (user) {
       user.lastPong = Date.now();
+    }
+  }
+
+  setMode(userId: string, mode: 'video' | 'audio' | 'text'): void {
+    const user = this.users.get(userId);
+    if (user) {
+      user.mode = mode;
+      logger.info(`Set mode for ${userId} to ${mode}`);
     }
   }
 
@@ -109,7 +118,7 @@ export class StateManager {
     user.enqueuedAt = Date.now(); // Always add to END of queue (FIFO)
 
     const queuePosition = this.getQueuePosition(userId);
-    logger.info(`✅ User enqueued at END: ${userId} (position: ${queuePosition}, no reconnection restrictions)`);
+    logger.info(`✅ User enqueued at END: ${userId} (mode: ${user.mode}, position: ${queuePosition}, no reconnection restrictions)`);
     return true;
   }
 
@@ -152,6 +161,11 @@ export class StateManager {
     if (userA.sessionId || userB.sessionId) {
       return { allowed: false, reason: 'One or both users already in session' };
     }
+    
+    // Rule: Must be same mode
+    if (userA.mode !== userB.mode) {
+      return { allowed: false, reason: `Mode mismatch: ${userA.mode} vs ${userB.mode}` };
+    }
 
     // ✅ NO RESTRICTIONS on previously connected users - they can reconnect freely
     // ✅ Following Omegle rules: any user can match with any other user multiple times
@@ -167,6 +181,7 @@ export class StateManager {
     }
 
     const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const userA = this.users.get(userAId)!;
     
     // Atomic session creation
     const session: Session = {
@@ -176,11 +191,11 @@ export class StateManager {
       createdAt: Date.now(),
       lastActivity: Date.now(),
       acknowledgedBy: new Set(),
-      state: 'pending'
+      state: 'pending',
+      mode: userA.mode
     };
 
     // Lock both users to this session
-    const userA = this.users.get(userAId)!;
     const userB = this.users.get(userBId)!;
 
     userA.state = UserState.CONNECTED;
@@ -195,7 +210,7 @@ export class StateManager {
     this.userSessions.set(userAId, sessionId);
     this.userSessions.set(userBId, sessionId);
 
-    logger.info(`🔗 Session created: ${sessionId} (${userAId} <-> ${userBId})`);
+    logger.info(`🔗 Session created: ${sessionId} (${userAId} <-> ${userBId}) [${session.mode}]`);
     return sessionId;
   }
 
@@ -317,15 +332,17 @@ export class StateManager {
   // 6️⃣ QUEUE OPERATIONS
   // ═══════════════════════════════════════════════════════════════
 
-  getSearchingUsers(): UserRecord[] {
+  getSearchingUsers(mode: 'video' | 'audio' | 'text' = 'video'): UserRecord[] {
     return Array.from(this.users.values())
-      .filter(user => user.state === UserState.SEARCHING)
+      .filter(user => user.state === UserState.SEARCHING && user.mode === mode)
       .sort((a, b) => (a.enqueuedAt || 0) - (b.enqueuedAt || 0)); // FIFO
   }
 
   getQueuePosition(userId: string): number {
-    const searchingUsers = this.getSearchingUsers();
-    const index = searchingUsers.findIndex(user => user.userId === userId);
+    const user = this.users.get(userId);
+    if (!user) return -1;
+    const searchingUsers = this.getSearchingUsers(user.mode);
+    const index = searchingUsers.findIndex(u => u.userId === userId);
     return index === -1 ? -1 : index + 1;
   }
 
@@ -384,11 +401,18 @@ export class StateManager {
       return acc;
     }, {} as Record<UserState, number>);
 
+    const video = this.getSearchingUsers('video').length;
+    const audio = this.getSearchingUsers('audio').length;
+    const text = this.getSearchingUsers('text').length;
+
     return {
       totalUsers: this.users.size,
       activeSessions: this.sessions.size,
       states,
-      searchingUsers: this.getSearchingUsers().length
+      searchingVideo: video,
+      searchingAudio: audio,
+      searchingText: text,
+      searchingUsers: video + audio + text
     };
   }
 }

@@ -10,6 +10,8 @@ import Help from './components/pages/Help';
 import Contact from './components/pages/Contact';
 import MaintenancePage from './components/pages/MaintenancePage';
 import VideoChat from './components/pages/VideoChat';
+import AudioChat from './components/pages/AudioChat';
+import TextChat from './components/pages/TextChat';
 
 const AppBackground = styled.div`
   height: 100vh;
@@ -44,9 +46,9 @@ function AppContent() {
               <Route path="/about" element={<About />} />
               <Route path="/help" element={<Help />} />
               <Route path="/contact" element={<Contact />} />
-              <Route path="/voice" element={<MaintenancePage chatType="voice" />} />
+              <Route path="/voice" element={<AudioChat />} />
               <Route path="/video" element={<VideoChat />} />
-              <Route path="/text" element={<MaintenancePage chatType="text" />} />
+              <Route path="/text" element={<TextChat />} />
             </Routes>
       </MainContent>
     </AppBackground>
