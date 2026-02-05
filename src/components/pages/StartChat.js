@@ -154,15 +154,6 @@ const OptionTitle = styled.h3`
   }
 `;
 
-const OptionDescription = styled.p`
-  font-size: 0.95rem;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  line-height: 1.6;
-  margin-bottom: 1rem;
-  position: relative;
-  z-index: 2;
-`;
-
 const ArrowIcon = styled.div`
   position: relative;
   z-index: 2;

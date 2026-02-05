@@ -106,21 +106,6 @@ const ListItem = styled.li`
   line-height: 1.5;
 `;
 
-const Strong = styled.strong`
-  color: #F8FAFC;
-  font-weight: 600;
-`;
-
-const Link = styled.a`
-  color: #1DB954;
-  text-decoration: none;
-  font-weight: 500;
-  
-  &:hover {
-    text-decoration: underline;
-  }
-`;
-
 function Terms() {
   return (
     <TermsContainer>
