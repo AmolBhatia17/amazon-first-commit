@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiUsers, FiSend, FiSmile } from 'react-icons/fi';

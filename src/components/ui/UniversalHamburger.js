@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { Link, useLocation } from 'react-router-dom';
 import { FiMenu, FiX, FiVideo, FiMic, FiMessageSquare, FiAlertCircle, FiInfo } from 'react-icons/fi';
 import ReportBugModal from './ReportBugModal';
