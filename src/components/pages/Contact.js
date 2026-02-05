@@ -107,7 +107,7 @@ const Error = styled.div`
 function Contact() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [subject, setSubject] = useState('Contact');
+  const subject = 'Contact';
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState('idle');
 
