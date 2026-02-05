@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 
-router.post('/token', (req: Request, res: Response) => {
+router.post('/token', (_req: Request, res: Response) => {
   try {
     const { token, expiresIn } = generateToken();
     
