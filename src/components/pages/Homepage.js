@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Link } from 'react-router-dom';
 import ReportBugModal from '../ui/ReportBugModal';
-import { FiArrowRight, FiZap, FiSmile, FiMessageCircle, FiMic, FiVideo, FiAlertTriangle } from 'react-icons/fi';
+import { FiArrowRight, FiZap, FiMessageCircle, FiMic, FiVideo, FiAlertTriangle } from 'react-icons/fi';
 import UniversalHamburger from '../ui/UniversalHamburger';
 import Footer from '../layout/Footer';
-import { isLowPowerDevice, getAnimationSettings } from '../../utils/performanceOptimizations';
 
 const Page = styled.div`
   min-height: 100vh;
@@ -385,15 +384,6 @@ const MobileReportButton = styled.button`
 
 function Homepage() {
   const [bugOpen, setBugOpen] = useState(false);
-  const [isLowPower, setIsLowPower] = useState(false);
-  const [animationSettings, setAnimationSettings] = useState({});
-
-  useEffect(() => {
-    const lowPower = isLowPowerDevice();
-    const settings = getAnimationSettings();
-    setIsLowPower(lowPower);
-    setAnimationSettings(settings);
-  }, []);
   
   return (
     <Page>
