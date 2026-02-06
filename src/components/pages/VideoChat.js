@@ -907,9 +907,10 @@ const ChatInput = styled.div`
   padding: 10px;
   border-top: 1px solid rgba(255,255,255,0.1);
   gap: 8px;
+  min-width: 0;
   
   @media (max-width: 768px) {
-    padding: 12px;
+    padding: 10px 8px;
     background: rgba(0,0,0,0.95);
   }
 `;
@@ -918,10 +919,17 @@ const InputRow = styled.div`
   display: flex;
   gap: 8px;
   align-items: center;
+  min-width: 0;
+  @media (max-width: 768px) {
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+  }
 `;
 
 const MessageInput = styled.input`
   flex: 1;
+  min-width: 0;
   padding: 8px 12px;
   border: 1px solid rgba(29,185,84,0.3);
   border-radius: 6px;
@@ -939,8 +947,8 @@ const MessageInput = styled.input`
   }
   
   @media (max-width: 768px) {
-    padding: 12px 16px;
-    font-size: 1rem;
+    padding: 8px 10px;
+    font-size: 0.9rem;
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(29,185,84,0.5);
   }
@@ -964,8 +972,9 @@ const SendButton = styled.button`
   }
   
   @media (max-width: 768px) {
-    padding: 12px;
-    font-size: 1.2rem;
+    padding: 10px;
+    font-size: 1.1rem;
+    flex-shrink: 0;
   }
 `;
 
@@ -987,8 +996,9 @@ const EmojiButton = styled.button`
   }
   
   @media (max-width: 768px) {
-    padding: 12px;
-    font-size: 1.2rem;
+    padding: 10px;
+    font-size: 1.1rem;
+    flex-shrink: 0;
   }
 `;
 
