@@ -289,7 +289,8 @@ wss.on('connection', (ws, request) => {
             break;
           }
 
-          if (session.state !== 'active') {
+          // Allow signaling as soon as session exists (pending or active) so first offer isn't dropped
+          if (session.state !== 'pending' && session.state !== 'active') {
             send(userId, { type: 'error', message: 'Session not ready for signaling' });
             break;
           }

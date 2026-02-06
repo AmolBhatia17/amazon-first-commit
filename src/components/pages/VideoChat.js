@@ -5,6 +5,7 @@ import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiUsers, FiSend, FiSmile } fro
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -853,13 +854,21 @@ function VideoChat() {
   const isInitiatorRef = useRef(false);
   const remoteStreamRef = useRef(null);
   const remoteBufferTimerRef = useRef(null);
+  const stunServerIndexRef = useRef(0);
+  const connectionStartTimeRef = useRef(null);
+  const establishmentRecordedRef = useRef(false);
 
-  // WebRTC configuration
-  const rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
+  const recordEstablishmentTime = () => {
+    if (establishmentRecordedRef.current) return;
+    establishmentRecordedRef.current = true;
+    const start = connectionStartTimeRef.current;
+    if (start != null) {
+      const elapsed = Date.now() - start;
+      if (elapsed > ESTABLISHMENT_DELAY_THRESHOLD_MS) {
+        stunServerIndexRef.current = (stunServerIndexRef.current + 1) % STUN_SERVERS.length;
+        console.log('[STUN] Establishment took', Math.round(elapsed), 'ms > 2.5s, next connection will try server index', stunServerIndexRef.current);
+      }
+    }
   };
 
   const cleanupPeer = () => {
@@ -946,9 +955,9 @@ function VideoChat() {
 
       const peer = new SimplePeer({
         initiator: isInitiator,
-        trickle: false, // send complete SDP to reduce mid-call ICE issues
+        trickle: true,
         stream: localStreamRef.current,
-        config: rtcConfig,
+        config: getRtcConfig(stunServerIndexRef.current),
       });
       peerConnectionRef.current = peer;
       isInitiatorRef.current = isInitiator;
@@ -961,6 +970,7 @@ function VideoChat() {
 
       peer.on('stream', (remoteStream) => {
         console.log('Peer stream event', remoteStream);
+        recordEstablishmentTime();
         remoteStreamRef.current = remoteStream;
         applyRemoteStream();
         setIsConnected(true);
@@ -972,6 +982,7 @@ function VideoChat() {
       // Fallback for browsers emitting 'track'
       peer.on('track', (track, stream) => {
         console.log('Peer track event', track, stream);
+        recordEstablishmentTime();
         if (!remoteStreamRef.current) {
           remoteStreamRef.current = new MediaStream();
         }
@@ -987,6 +998,7 @@ function VideoChat() {
       });
 
       peer.on('connect', () => {
+        recordEstablishmentTime();
         setIsConnected(true);
         setIsWaiting(false);
         setShowRemoteBuffer(false);
@@ -1407,20 +1419,20 @@ function VideoChat() {
       setReplyingTo(null);
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
-      // Use timed buffer for connection phase
       triggerRemoteBuffer(false);
-      
+      connectionStartTimeRef.current = Date.now();
+      establishmentRecordedRef.current = false;
+
       console.log('[ws] 🎯 matched with', data.partnerId, '- reconnections allowed, FIFO matching');
-      
+
       if (!localStreamRef.current) {
         setError('Camera not ready. Please allow camera access.');
         return;
       }
 
-      // Acknowledge the match to follow Omegle rules
       socketService.send({ type: 'acknowledge' });
       console.log('[ws] acknowledged match with', data.partnerId);
-      
+
       await setupWebRTC(data.initiator);
     };
 

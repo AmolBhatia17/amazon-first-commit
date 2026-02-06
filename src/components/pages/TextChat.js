@@ -5,6 +5,7 @@ import { FiSend, FiSmile } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -416,13 +417,21 @@ function TextChat() {
   const peerConnectionRef = useRef(null);
   const partnerIdRef = useRef(null);
   const isInitiatorRef = useRef(false);
+  const stunServerIndexRef = useRef(0);
+  const connectionStartTimeRef = useRef(null);
+  const establishmentRecordedRef = useRef(false);
 
-  // WebRTC configuration
-  const rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
+  const recordEstablishmentTime = () => {
+    if (establishmentRecordedRef.current) return;
+    establishmentRecordedRef.current = true;
+    const start = connectionStartTimeRef.current;
+    if (start != null) {
+      const elapsed = Date.now() - start;
+      if (elapsed > ESTABLISHMENT_DELAY_THRESHOLD_MS) {
+        stunServerIndexRef.current = (stunServerIndexRef.current + 1) % STUN_SERVERS.length;
+        console.log('[STUN] Establishment took', Math.round(elapsed), 'ms > 2.5s, next connection will try server index', stunServerIndexRef.current);
+      }
+    }
   };
 
   const cleanupPeer = () => {
@@ -453,8 +462,8 @@ function TextChat() {
     try {
       const peer = new SimplePeer({
         initiator: isInitiator,
-        trickle: false,
-        config: rtcConfig,
+        trickle: true,
+        config: getRtcConfig(stunServerIndexRef.current),
       });
       peerConnectionRef.current = peer;
       isInitiatorRef.current = isInitiator;
@@ -466,6 +475,7 @@ function TextChat() {
       });
 
       peer.on('connect', () => {
+        recordEstablishmentTime();
         setIsConnected(true);
         setIsWaiting(false);
         setWaitingMessage('');
@@ -693,10 +703,12 @@ function TextChat() {
       setReplyingTo(null);
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
-      setIsConnected(false); // Reset connection state on match
-      
+      setIsConnected(false);
+      connectionStartTimeRef.current = Date.now();
+      establishmentRecordedRef.current = false;
+
       console.log('[ws] 🎯 matched with', data.partnerId);
-      
+
       socketService.send({ type: 'acknowledge' });
       await setupWebRTC(data.initiator);
     };

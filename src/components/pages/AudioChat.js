@@ -5,6 +5,7 @@ import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones } from 'react-i
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import AudioVisualizer from '../ui/AudioVisualizer';
 
 // Minimal process polyfill for simple-peer in browser builds
@@ -683,17 +684,25 @@ function AudioChat() {
   const isInitiatorRef = useRef(false);
   const remoteStreamRef = useRef(null);
   const remoteBufferTimerRef = useRef(null);
-  
+  const stunServerIndexRef = useRef(0);
+  const connectionStartTimeRef = useRef(null);
+  const establishmentRecordedRef = useRef(false);
+
+  const recordEstablishmentTime = () => {
+    if (establishmentRecordedRef.current) return;
+    establishmentRecordedRef.current = true;
+    const start = connectionStartTimeRef.current;
+    if (start != null) {
+      const elapsed = Date.now() - start;
+      if (elapsed > ESTABLISHMENT_DELAY_THRESHOLD_MS) {
+        stunServerIndexRef.current = (stunServerIndexRef.current + 1) % STUN_SERVERS.length;
+        console.log('[STUN] Establishment took', Math.round(elapsed), 'ms > 2.5s, next connection will try server index', stunServerIndexRef.current);
+      }
+    }
+  };
+
   // New state for visualizer
   const [remoteStreamForVisualizer, setRemoteStreamForVisualizer] = useState(null);
-
-  // WebRTC configuration
-  const rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
-  };
 
   const cleanupPeer = () => {
     if (peerConnectionRef.current) {
@@ -771,9 +780,9 @@ function AudioChat() {
 
       const peer = new SimplePeer({
         initiator: isInitiator,
-        trickle: false,
+        trickle: true,
         stream: localStreamRef.current,
-        config: rtcConfig,
+        config: getRtcConfig(stunServerIndexRef.current),
       });
       peerConnectionRef.current = peer;
       isInitiatorRef.current = isInitiator;
@@ -786,6 +795,7 @@ function AudioChat() {
 
       peer.on('stream', (remoteStream) => {
         console.log('Peer stream event', remoteStream);
+        recordEstablishmentTime();
         remoteStreamRef.current = remoteStream;
         setRemoteStreamForVisualizer(remoteStream);
         applyRemoteStream();
@@ -797,6 +807,7 @@ function AudioChat() {
 
       peer.on('track', (track, stream) => {
         console.log('Peer track event', track, stream);
+        recordEstablishmentTime();
         if (!remoteStreamRef.current) {
           remoteStreamRef.current = new MediaStream();
         }
@@ -813,6 +824,7 @@ function AudioChat() {
       });
 
       peer.on('connect', () => {
+        recordEstablishmentTime();
         setIsConnected(true);
         setIsWaiting(false);
         setShowRemoteBuffer(false);
@@ -1153,9 +1165,11 @@ function AudioChat() {
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
       triggerRemoteBuffer(false);
-      
+      connectionStartTimeRef.current = Date.now();
+      establishmentRecordedRef.current = false;
+
       console.log('[ws] 🎯 matched with', data.partnerId);
-      
+
       if (!localStreamRef.current) {
         setError('Microphone not ready.');
         return;
