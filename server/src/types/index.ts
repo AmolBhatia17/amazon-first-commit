@@ -1,3 +1,5 @@
+import type { WebSocket } from 'ws';
+
 export interface JWTPayload {
   userId: string;
   type: 'anonymous';
@@ -52,7 +54,7 @@ export interface QueueEntry {
 
 export interface UserRecord {
   userId: string;
-  ws: import('ws').WebSocket;
+  ws: WebSocket;
   state: UserState;
   sessionId?: string;
   lastPong: number;
@@ -62,7 +64,7 @@ export interface UserRecord {
   mode: 'video' | 'audio' | 'text';
 }
 
-export interface WsClient extends import('ws').WebSocket {
+export interface WsClient extends WebSocket {
   isAlive: boolean;
   userId: string;
 }
