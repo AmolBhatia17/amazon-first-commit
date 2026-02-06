@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiUsers, FiSend, FiSmile } from 'react-icons/fi';
+import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiUsers, FiSend, FiSmile, FiMessageCircle, FiSquare } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
@@ -448,63 +448,110 @@ const ControlButton = styled.button`
   }
 `;
 
-const SkipButton = styled.button`
-  background: linear-gradient(135deg, #1DB954, #19a64c);
-  color: #fff;
+const ButtonIcon = styled.span`
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  font-size: 1.1em;
+`;
+
+const StartChatButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 28px;
+  border-radius: 999px;
   border: none;
-  padding: 14px 24px;
-  border-radius: 6px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1rem;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  min-width: 80px;
+  transition: all 0.25s ease;
+  background: linear-gradient(135deg, #1DB954 0%, #169c46 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(29, 185, 84, 0.35);
   
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(29,185,84,0.3);
-    background: linear-gradient(135deg, #20e06b, #1db954);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(29, 185, 84, 0.45);
+    background: linear-gradient(135deg, #22e06b 0%, #1DB954 100%);
+  }
+  
+  &:active {
+    transform: translateY(0);
   }
   
   @media (max-width: 768px) {
-    padding: 10px 16px;
-    font-size: 0.8rem;
-    min-width: auto;
+    padding: 12px 22px;
+    font-size: 0.95rem;
   }
 `;
 
-const StartStopButton = styled.button`
-  background: ${props => props.$isStarted 
-    ? 'linear-gradient(135deg, #DC3545, #c82333)' 
-    : 'linear-gradient(135deg, #1DB954, #19a64c)'};
-  color: #fff;
-  border: none;
+const StopButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 14px 24px;
-  border-radius: 6px;
-  font-weight: 700;
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
   font-size: 1rem;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  min-width: 80px;
+  transition: all 0.25s ease;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(231, 76, 60, 0.35);
   
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: ${props => props.$isStarted 
-      ? '0 2px 8px rgba(220,53,69,0.3)' 
-      : '0 2px 8px rgba(29,185,84,0.3)'};
-    background: ${props => props.$isStarted 
-      ? 'linear-gradient(135deg, #e74c5c, #d63031)' 
-      : 'linear-gradient(135deg, #20e06b, #1db954)'};
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.45);
+    background: linear-gradient(135deg, #ff6b5b 0%, #e74c3c 100%);
+  }
+  
+  &:active {
+    transform: translateY(0);
   }
   
   @media (max-width: 768px) {
-    padding: 10px 16px;
-    font-size: 0.8rem;
-    min-width: auto;
+    padding: 12px 20px;
+    font-size: 0.95rem;
+  }
+`;
+
+const SkipButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px;
+  border-radius: 999px;
+  border: 2px solid rgba(29, 185, 84, 0.6);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  background: rgba(29, 185, 84, 0.15);
+  color: #1DB954;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: rgba(29, 185, 84, 0.25);
+    box-shadow: 0 4px 14px rgba(29, 185, 84, 0.3);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 12px 20px;
+    font-size: 0.95rem;
   }
 `;
 
@@ -1563,22 +1610,37 @@ function VideoChat() {
                         {audioEnabled ? <FiMic /> : <FiMicOff />}
                       </VideoOverlayButton>
                       <MobileVideoControls>
-                        <MobileControlButton
-                          onClick={skipPartner}
-                          className="skip"
-                          title="Skip to next stranger"
-                          disabled={!isStarted}
-                          style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
-                        >
-                          SKIP
-                        </MobileControlButton>
-                        <MobileControlButton
-                          onClick={isStarted ? stopChat : startNewChat}
-                          className={isStarted ? 'stop' : 'start'}
-                          title={isStarted ? "Stop chat" : "Start new chat"}
-                        >
-                          {isStarted ? 'STOP' : 'START'}
-                        </MobileControlButton>
+                        {!isStarted ? (
+                          <MobileControlButton
+                            onClick={startNewChat}
+                            className="start"
+                            title="Start chat"
+                          >
+                            <FiMessageCircle style={{ marginRight: 6 }} />
+                            Start Chat
+                          </MobileControlButton>
+                        ) : (
+                          <>
+                            <MobileControlButton
+                              onClick={skipPartner}
+                              className="skip"
+                              title="Skip to next stranger"
+                              disabled={!isStarted}
+                              style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
+                            >
+                              <FiSkipForward style={{ marginRight: 6 }} />
+                              Skip
+                            </MobileControlButton>
+                            <MobileControlButton
+                              onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                              className="stop"
+                              title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
+                            >
+                              <FiSquare style={{ marginRight: 6 }} />
+                              Stop
+                            </MobileControlButton>
+                          </>
+                        )}
                       </MobileVideoControls>
                     </VideoFeed>
           </VideoFeedsContainer>
@@ -1652,31 +1714,29 @@ function VideoChat() {
              
                    <BottomControlsSection>
                      <ChatControls>
-                      <SkipButton
-                        onClick={skipPartner}
-                        title="Skip to next stranger"
-                        disabled={!isStarted}
-                        style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
-                      >
-                        SKIP
-                      </SkipButton>
-                      
-                      {isWaiting && !isConnected ? (
-                        <StartStopButton 
-                          onClick={cancelSearch}
-                          $isStarted={false}
-                          title="Cancel search"
-                        >
-                          CANCEL
-                        </StartStopButton>
+                      {!isStarted ? (
+                        <StartChatButton onClick={startNewChat} title="Start chat">
+                          <ButtonIcon><FiMessageCircle /></ButtonIcon>
+                          Start Chat
+                        </StartChatButton>
                       ) : (
-                        <StartStopButton 
-                          onClick={isStarted ? stopChat : startNewChat}
-                          $isStarted={isStarted}
-                          title={isStarted ? "Stop chat" : "Start new chat"}
-                        >
-                          {isStarted ? "STOP" : "START"}
-                        </StartStopButton>
+                        <>
+                          <StopButton
+                            onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                            title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
+                          >
+                            <ButtonIcon><FiSquare /></ButtonIcon>
+                            Stop
+                          </StopButton>
+                          <SkipButton
+                            onClick={skipPartner}
+                            title="Skip to next stranger"
+                            disabled={!isStarted}
+                          >
+                            <ButtonIcon><FiSkipForward /></ButtonIcon>
+                            Skip
+                          </SkipButton>
+                        </>
                       )}
                      </ChatControls>
                    </BottomControlsSection>

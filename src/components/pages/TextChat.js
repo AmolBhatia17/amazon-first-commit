@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { FiSend, FiSmile } from 'react-icons/fi';
+import { FiSend, FiSmile, FiMessageCircle, FiSquare, FiSkipForward } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
@@ -41,11 +41,18 @@ const MainContent = styled.div`
   align-items: center;
   justify-content: center;
   padding: 20px;
+  
+  @media (max-width: 768px) {
+    padding: 0;
+    margin-top: 64px;
+    height: calc(100vh - 64px);
+    justify-content: stretch;
+  }
 `;
 
 const ChatSection = styled.div`
   width: 100%;
-  max-width: 800px; /* Centered, max-width for readability */
+  max-width: 800px;
   height: 100%;
   background: #000000;
   display: flex;
@@ -60,66 +67,115 @@ const ChatSection = styled.div`
     border: none;
     max-width: 100%;
     padding: 0;
+    flex: 1;
+    min-height: 0;
+  }
+`;
+
+const ButtonIcon = styled.span`
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  font-size: 1.1em;
+`;
+
+const StartChatButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 28px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  background: linear-gradient(135deg, #1DB954 0%, #169c46 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(29, 185, 84, 0.35);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(29, 185, 84, 0.45);
+    background: linear-gradient(135deg, #22e06b 0%, #1DB954 100%);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 12px 22px;
+    font-size: 0.95rem;
+  }
+`;
+
+const StopButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(231, 76, 60, 0.35);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.45);
+    background: linear-gradient(135deg, #ff6b5b 0%, #e74c3c 100%);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 12px 20px;
+    font-size: 0.95rem;
   }
 `;
 
 const SkipButton = styled.button`
-  background: linear-gradient(135deg, #1DB954, #19a64c);
-  color: #fff;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 14px 24px;
-  border-radius: 6px;
-  font-weight: 700;
+  border-radius: 999px;
+  border: 2px solid rgba(29, 185, 84, 0.6);
+  font-weight: 600;
   font-size: 1rem;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  min-width: 80px;
+  transition: all 0.25s ease;
+  background: rgba(29, 185, 84, 0.15);
+  color: #1DB954;
   
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(29,185,84,0.3);
-    background: linear-gradient(135deg, #20e06b, #1db954);
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: rgba(29, 185, 84, 0.25);
+    box-shadow: 0 4px 14px rgba(29, 185, 84, 0.3);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
   }
   
   @media (max-width: 768px) {
-    padding: 10px 16px;
-    font-size: 0.8rem;
-    min-width: auto;
-  }
-`;
-
-const StartStopButton = styled.button`
-  background: ${props => props.$isStarted 
-    ? 'linear-gradient(135deg, #DC3545, #c82333)' 
-    : 'linear-gradient(135deg, #1DB954, #19a64c)'};
-  color: #fff;
-  border: none;
-  padding: 14px 24px;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  min-width: 80px;
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: ${props => props.$isStarted 
-      ? '0 2px 8px rgba(220,53,69,0.3)' 
-      : '0 2px 8px rgba(29,185,84,0.3)'};
-    background: ${props => props.$isStarted 
-      ? 'linear-gradient(135deg, #e74c5c, #d63031)' 
-      : 'linear-gradient(135deg, #20e06b, #1db954)'};
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px 16px;
-    font-size: 0.8rem;
-    min-width: auto;
+    padding: 12px 20px;
+    font-size: 0.95rem;
   }
 `;
 
@@ -132,16 +188,17 @@ const ChatBox = styled.div`
   backdrop-filter: blur(10px);
   z-index: 5;
   width: 100%;
+  min-height: 0;
   
   @media (max-width: 768px) {
     position: fixed;
-    top: 70px;
-    bottom: ${props => props.$keyboardHeight ? `${props.$keyboardHeight}px` : '0'};
+    top: 64px;
     left: 0;
     right: 0;
-    height: auto;
     width: 100%;
-    transition: bottom 0.3s ease;
+    bottom: ${props => props.$keyboardHeight ? `calc(72px + ${props.$keyboardHeight}px)` : '72px'};
+    transition: bottom 0.2s ease;
+    z-index: 2;
   }
 `;
 
@@ -152,11 +209,12 @@ const ChatMessages = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
   
   @media (max-width: 768px) {
-    padding: 15px;
-    padding-bottom: 100px; /* Space for input/controls */
+    padding: 12px 10px 120px 10px;
     scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
     &::-webkit-scrollbar { width: 4px; }
     &::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 2px; }
     &::-webkit-scrollbar-thumb { background: rgba(29,185,84,0.5); border-radius: 2px; }
@@ -258,9 +316,10 @@ const ChatInput = styled.div`
   border-top: 1px solid rgba(255,255,255,0.1);
   gap: 8px;
   background: rgba(0,0,0,0.8);
+  flex-shrink: 0;
   
   @media (max-width: 768px) {
-    padding: 12px;
+    padding: 10px 12px 12px;
     background: rgba(0,0,0,0.95);
   }
 `;
@@ -273,6 +332,7 @@ const InputRow = styled.div`
 
 const MessageInput = styled.input`
   flex: 1;
+  min-width: 0;
   padding: 12px 16px;
   border: 1px solid rgba(29,185,84,0.3);
   border-radius: 8px;
@@ -284,7 +344,8 @@ const MessageInput = styled.input`
   &::placeholder { color: #666; }
   
   @media (max-width: 768px) {
-    padding: 12px 16px;
+    padding: 10px 12px;
+    font-size: 16px;
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(29,185,84,0.5);
   }
@@ -326,10 +387,10 @@ const EmojiButton = styled.button`
 
 const EmojiPicker = styled.div`
   position: absolute;
-  bottom: 80px;
-  left: 20px;
-  right: 20px;
-  max-width: 100%;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
   max-height: 160px;
   background: rgba(0,0,0,0.95);
   border: 1px solid rgba(29,185,84,0.3);
@@ -341,6 +402,13 @@ const EmojiPicker = styled.div`
   backdrop-filter: blur(10px);
   z-index: 10;
   overflow-y: auto;
+  
+  @media (max-width: 768px) {
+    left: -8px;
+    right: -8px;
+    max-height: 140px;
+    margin-bottom: 6px;
+  }
 `;
 
 const EmojiItem = styled.button`
@@ -389,6 +457,19 @@ const BottomControlsSection = styled.div`
   align-items: center;
   justify-content: center;
   width: 100%;
+  flex-shrink: 0;
+  
+  @media (max-width: 768px) {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 72px;
+    z-index: 10;
+    background: rgba(0,0,0,0.95);
+    border-top: 1px solid rgba(29,185,84,0.3);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
 `;
 
 const ChatControls = styled.div`
@@ -882,31 +963,29 @@ function TextChat() {
           
           <BottomControlsSection>
             <ChatControls>
-              <SkipButton
-                onClick={skipPartner}
-                title="Skip to next stranger"
-                disabled={!isStarted}
-                style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
-              >
-                SKIP
-              </SkipButton>
-              
-              {isWaiting && !isConnected ? (
-                <StartStopButton 
-                  onClick={cancelSearch}
-                  $isStarted={false}
-                  title="Cancel search"
-                >
-                  CANCEL
-                </StartStopButton>
+              {!isStarted ? (
+                <StartChatButton onClick={startNewChat} title="Start chat">
+                  <ButtonIcon><FiMessageCircle /></ButtonIcon>
+                  Start Chat
+                </StartChatButton>
               ) : (
-                <StartStopButton 
-                  onClick={isStarted ? stopChat : startNewChat}
-                  $isStarted={isStarted}
-                  title={isStarted ? "Stop chat" : "Start new chat"}
-                >
-                  {isStarted ? "STOP" : "START"}
-                </StartStopButton>
+                <>
+                  <StopButton
+                    onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                    title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
+                  >
+                    <ButtonIcon><FiSquare /></ButtonIcon>
+                    Stop
+                  </StopButton>
+                  <SkipButton
+                    onClick={skipPartner}
+                    title="Skip to next stranger"
+                    disabled={!isStarted}
+                  >
+                    <ButtonIcon><FiSkipForward /></ButtonIcon>
+                    Skip
+                  </SkipButton>
+                </>
               )}
             </ChatControls>
           </BottomControlsSection>
