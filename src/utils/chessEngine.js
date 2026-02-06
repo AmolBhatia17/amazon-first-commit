@@ -36,22 +36,12 @@ function getInitialBoard() {
   ];
 }
 
-const INITIAL_BOARD = getInitialBoard();
-
 function isWhite(piece) {
   return piece && piece === piece.toUpperCase() && piece !== '';
 }
 function isBlack(piece) {
   return piece && piece === piece.toLowerCase();
 }
-function isEmpty(board, r, c) {
-  return !board[r][c];
-}
-function sameColor(p1, p2) {
-  if (!p1 || !p2) return false;
-  return isWhite(p1) === isWhite(p2);
-}
-
 function findKing(board, whiteTurn) {
   const k = whiteTurn ? 'K' : 'k';
   for (let r = 0; r < 8; r++)
@@ -146,7 +136,6 @@ function getPawnMoves(board, r, c, whiteTurn, enPassantTarget) {
 
 function getSlidingMoves(board, r, c, whiteTurn, directions) {
   const moves = [];
-  const piece = board[r][c];
   for (const [dr, dc] of directions) {
     let nr = r + dr;
     let nc = c + dc;
@@ -266,7 +255,6 @@ function getLegalMoves(board, whiteTurn, enPassantTarget, castling) {
 function updateCastling(castling, board, from, to) {
   const next = { ...castling };
   const fromCoord = posToCoord(from);
-  const toCoord = posToCoord(to);
   if (!fromCoord) return next;
   const piece = board[fromCoord.row][fromCoord.col];
   const pl = piece ? piece.toLowerCase() : '';

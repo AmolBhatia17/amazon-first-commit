@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import styled from 'styled-components';
-import { createInitialState, getLegalMovesForState, applyMove, posToCoord, coordToPos } from '../../utils/chessEngine';
+import { createInitialState, getLegalMovesForState, posToCoord, coordToPos } from '../../utils/chessEngine';
 
 const BoardWrap = styled.div`
   display: flex;
@@ -157,7 +157,7 @@ function ChessBoard({ state, amIWhite, onMove, disabled }) {
           displayCols.map((col) => {
             const piece = board[row][col];
             const light = (row + col) % 2 === 1;
-            const clickable = !disabled && (myTurn && piece && ((amIWhite && piece === piece.toUpperCase()) || (!amIWhite && piece === piece.toLowerCase())) || (selected && isLegalTarget(row, col)));
+            const clickable = !disabled && ((myTurn && piece && ((amIWhite && piece === piece.toUpperCase()) || (!amIWhite && piece === piece.toLowerCase()))) || (selected && isLegalTarget(row, col)));
             const showDot = selected && isLegalTarget(row, col) && !piece;
             const showCaptureDot = selected && isLegalTarget(row, col) && piece;
             const whiteFilled = piece ? piece === piece.toUpperCase() : true;
