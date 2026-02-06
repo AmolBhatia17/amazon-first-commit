@@ -368,6 +368,43 @@ wss.on('connection', (ws, request) => {
           break;
         }
 
+        // ───────────────────────────────────────────────────────────
+        // FUN REQUEST / ACCEPT / REJECT - Forward to partner
+        // ───────────────────────────────────────────────────────────
+        case 'fun-request': {
+          const session = stateManager.getUserSession(userId);
+          const partner = session ? stateManager.getSessionPartner(userId) : null;
+          if (!partner) {
+            send(userId, { type: 'error', message: 'No active session for fun request' });
+            break;
+          }
+          const game = (message as any).game || 'chess';
+          send(partner, { type: 'fun-request', from: userId, game });
+          break;
+        }
+        case 'fun-accept': {
+          const session = stateManager.getUserSession(userId);
+          const partner = session ? stateManager.getSessionPartner(userId) : null;
+          if (!partner) break;
+          const game = (message as any).game || 'chess';
+          send(partner, { type: 'fun-accept', from: userId, game });
+          break;
+        }
+        case 'fun-reject': {
+          const session = stateManager.getUserSession(userId);
+          const partner = session ? stateManager.getSessionPartner(userId) : null;
+          if (!partner) break;
+          send(partner, { type: 'fun-reject', from: userId });
+          break;
+        }
+        case 'fun-exit': {
+          const session = stateManager.getUserSession(userId);
+          const partner = session ? stateManager.getSessionPartner(userId) : null;
+          if (!partner) break;
+          send(partner, { type: 'fun-exit', from: userId });
+          break;
+        }
+
         default: {
           send(userId, { type: 'error', message: `Unsupported message type: ${(message as any).type}` });
         }

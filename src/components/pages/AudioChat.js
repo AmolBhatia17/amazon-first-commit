@@ -1,11 +1,13 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiZap, FiVideo, FiPlay } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
+import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
+import ChessBoard from '../ui/ChessBoard';
 import AudioVisualizer from '../ui/AudioVisualizer';
 
 // Minimal process polyfill for simple-peer in browser builds
@@ -57,13 +59,10 @@ const AudioFeedsContainer = styled.div`
   display: flex;
   flex-direction: column;
   background: #1a1a1a;
-  border-right: 1px solid rgba(255,255,255,0.1);
   
   @media (max-width: 768px) {
     width: 100%;
     height: 40%;
-    border-right: none;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
     flex-direction: row;
   }
 `;
@@ -71,17 +70,12 @@ const AudioFeedsContainer = styled.div`
 const AudioFeed = styled.div`
   flex: 1;
   background: #0f0f0f;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   min-height: 200px;
   overflow: hidden;
-  
-  &:last-child {
-    border-bottom: none;
-  }
   
   @media (min-width: 769px) {
     border: 2px solid #1DB954;
@@ -95,8 +89,6 @@ const AudioFeed = styled.div`
   
   @media (max-width: 768px) {
     min-height: 150px;
-    border-bottom: none;
-    border-right: 1px solid rgba(255,255,255,0.1);
     
     &:last-child {
       border-right: none;
@@ -298,10 +290,23 @@ const ChatSection = styled.div`
   display: flex;
   flex-direction: column;
   position: relative;
+  min-height: 0;
+  padding-bottom: 80px;
   
   @media (max-width: 768px) {
     height: 60%;
   }
+`;
+
+const ChessArea = styled.div`
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px;
+  background: #0d0d0d;
 `;
 
 const ButtonIcon = styled.span`
@@ -315,11 +320,12 @@ const StartChatButton = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 14px 28px;
+  padding: 12px 38px;
+  min-width: 140px;
   border-radius: 999px;
   border: none;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.15rem;
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: all 0.25s ease;
@@ -338,8 +344,9 @@ const StartChatButton = styled.button`
   }
   
   @media (max-width: 768px) {
-    padding: 12px 22px;
-    font-size: 0.95rem;
+    padding: 10px 28px;
+    min-width: 120px;
+    font-size: 1.05rem;
   }
 `;
 
@@ -347,22 +354,22 @@ const StopButton = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 14px 24px;
+  padding: 12px 38px;
+  min-width: 100px;
   border-radius: 999px;
-  border: none;
+  border: 2px solid #ef4444;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.15rem;
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: all 0.25s ease;
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(231, 76, 60, 0.35);
+  background: #000;
+  color: #ef4444;
   
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.45);
-    background: linear-gradient(135deg, #ff6b5b 0%, #e74c3c 100%);
+    background: #111;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
   }
   
   &:active {
@@ -370,8 +377,9 @@ const StopButton = styled.button`
   }
   
   @media (max-width: 768px) {
-    padding: 12px 20px;
-    font-size: 0.95rem;
+    padding: 10px 28px;
+    min-width: 88px;
+    font-size: 1.05rem;
   }
 `;
 
@@ -379,11 +387,12 @@ const SkipButton = styled.button`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 14px 24px;
+  padding: 12px 38px;
+  min-width: 100px;
   border-radius: 999px;
   border: 2px solid rgba(29, 185, 84, 0.6);
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.15rem;
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: all 0.25s ease;
@@ -406,39 +415,185 @@ const SkipButton = styled.button`
   }
   
   @media (max-width: 768px) {
-    padding: 12px 20px;
-    font-size: 0.95rem;
+    padding: 10px 28px;
+    min-width: 88px;
+    font-size: 1.05rem;
+  }
+`;
+
+const FunButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 38px;
+  min-width: 90px;
+  border-radius: 999px;
+  border: 2px solid rgba(245, 158, 11, 0.7);
+  font-weight: 600;
+  font-size: 1.15rem;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: rgba(245, 158, 11, 0.35);
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  @media (max-width: 768px) {
+    padding: 10px 24px;
+    min-width: 80px;
+    font-size: 1.05rem;
+  }
+`;
+
+const MobileFunWrap = styled.div`
+  display: none;
+  align-items: center;
+  flex-shrink: 0;
+  
+  @media (max-width: 768px) {
+    display: flex;
+  }
+`;
+
+const FunMenuWrap = styled.div`
+  position: relative;
+  display: inline-flex;
+`;
+
+const FunMenuPopover = styled.div`
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: calc(50% + 40px);
+  transform: translateX(-50%);
+  min-width: 180px;
+  background: rgba(0, 0, 0, 0.96);
+  border: 1px solid rgba(29, 185, 84, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 8px 0;
+  z-index: 20;
+  backdrop-filter: blur(12px);
+  
+  @media (max-width: 768px) {
+    bottom: calc(100% + 25px);
+    min-width: 160px;
+    left: calc(50% + 50px);
+    transform: translateX(-50%);
+    padding: 6px 0;
+  }
+`;
+
+const FunMenuItem = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  color: #F8FAFC;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease;
+  
+  &:hover {
+    background: rgba(29, 185, 84, 0.15);
+    color: #1DB954;
+  }
+  
+  &:active {
+    background: rgba(29, 185, 84, 0.25);
+  }
+  
+  @media (max-width: 768px) {
+    padding: 12px 14px;
+    font-size: 0.9rem;
+  }
+`;
+
+const FunSubmenu = styled.div`
+  padding: 4px 0 4px 8px;
+  border-left: 2px solid rgba(29, 185, 84, 0.4);
+  margin: 4px 0 4px 12px;
+`;
+
+const FunRequestOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+`;
+const FunRequestCard = styled.div`
+  background: #000;
+  border: 1px solid rgba(29, 185, 84, 0.4);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+`;
+const FunRequestText = styled.p`
+  color: #F8FAFC;
+  font-size: 1rem;
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+`;
+const FunRequestActions = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+`;
+
+const FunButtonSmall = styled(FunButton)`
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  
+  @media (max-width: 768px) {
+    padding: 10px 12px;
   }
 `;
 
 const ChatBox = styled.div`
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  bottom: 100px;
-  width: 300px;
+  position: ${props => props.$chessMode ? 'relative' : 'absolute'};
+  ${props => props.$chessMode
+    ? 'flex: 1; min-height: 0; width: 100%; max-width: 100%; top: auto; right: auto; bottom: auto; left: auto;'
+    : 'top: 20px; right: 20px; bottom: 100px; width: 300px;'}
   background: rgba(0,0,0,0.9);
-  border: 1px solid rgba(29,185,84,0.3);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);
   z-index: 5;
+  ${props => !props.$chessMode && 'border: 1px solid rgba(29,185,84,0.3);'}
   
   @media (max-width: 768px) {
-    position: fixed;
-    top: auto;
-    bottom: ${props => props.$keyboardHeight ? `${props.$keyboardHeight}px` : '0'};
-    left: 0;
-    right: 0;
-    width: 100%;
-    height: 200px;
+    position: ${props => props.$chessMode ? 'relative' : 'fixed'};
+    ${props => props.$chessMode
+      ? 'flex: 1; min-height: 120px;'
+      : `left: 0; right: 0; width: 100%; height: 200px; transition: top 0.2s ease;
+         ${props.$mobileChatTop != null ? `top: ${props.$mobileChatTop}px; bottom: auto;` : 'top: auto; bottom: 0;'}`}
     border-radius: 0;
-    border-left: none;
-    border-right: none;
-    border-bottom: none;
-    border-top: 1px solid rgba(29,185,84,0.3);
-    transition: bottom 0.3s ease;
+    border: none;
   }
 `;
 
@@ -685,7 +840,6 @@ const BottomControlsSection = styled.div`
   right: 0;
   height: 80px;
   background: rgba(0,0,0,0.9);
-  border-top: 1px solid rgba(29,185,84,0.3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -698,6 +852,37 @@ const BottomControlsSection = styled.div`
 `;
 
 const ChatControls = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 20px;
+  
+  @media (max-width: 768px) {
+    padding: 0 10px;
+  }
+`;
+
+const ChatControlsCentered = styled.div`
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+`;
+
+const ChatControlsStartRight = styled.div`
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-right: 50px;
+  @media (max-width: 768px) {
+    justify-content: center;
+    padding-right: 0;
+  }
+`;
+
+const ChatControlsRight = styled.div`
   display: flex;
   gap: 15px;
   align-items: center;
@@ -718,10 +903,20 @@ function AudioChat() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [isStarted, setIsStarted] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [mobileChatTop, setMobileChatTop] = useState(null);
   const [waitingMessage, setWaitingMessage] = useState('');
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [showRemoteBuffer, setShowRemoteBuffer] = useState(false);
+  const [showFunMenu, setShowFunMenu] = useState(false);
+  const [showPlayAlongSubmenu, setShowPlayAlongSubmenu] = useState(false);
+  const [funToken, setFunToken] = useState(0);
+  const [pendingFunRequest, setPendingFunRequest] = useState(null);
+  const [acceptedFunGame, setAcceptedFunGame] = useState(null);
+  const [amIWhite, setAmIWhite] = useState(true);
+  const [chessState, setChessState] = useState(createInitialState);
   const hasRemoteStreamRef = useRef(false);
+  const funMenuRef = useRef(null);
+  const funMenuMobileRef = useRef(null);
   
   const remoteAudioRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -890,6 +1085,15 @@ function AudioChat() {
       peer.on('data', (data) => {
         try {
           const text = new TextDecoder().decode(data);
+          let obj = null;
+          try { obj = JSON.parse(text); } catch (_) {}
+          if (obj && obj.type === 'chess-move') {
+            setChessState((prev) => {
+              const next = applyChessMove(prev, { from: obj.from, to: obj.to, promotion: obj.promotion });
+              return next || prev;
+            });
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -977,6 +1181,10 @@ function AudioChat() {
     setWaitingMessage(message);
     setMessages([]);
     setReplyingTo(null);
+    setFunToken(0);
+    setPendingFunRequest(null);
+    setAcceptedFunGame(null);
+    setChessState(createInitialState());
     setAudioEnabled(true);
     setError('');
     if (localStreamRef.current) {
@@ -1032,6 +1240,10 @@ function AudioChat() {
     setIsWaiting(false);
     setWaitingMessage('');
     setIsStarted(false);
+    setFunToken(0);
+    setPendingFunRequest(null);
+    setAcceptedFunGame(null);
+    setChessState(createInitialState());
     setError('');
     setMessages([]);
     setReplyingTo(null);
@@ -1051,6 +1263,29 @@ function AudioChat() {
     }
   };
 
+  const handleChessMove = (move) => {
+    const next = applyChessMove(chessState, move);
+    if (!next) return;
+    setChessState(next);
+    const peer = peerConnectionRef.current;
+    if (peer && typeof peer.send === 'function') {
+      try {
+        peer.send(JSON.stringify({ type: 'chess-move', from: move.from, to: move.to, promotion: move.promotion || undefined }));
+      } catch (e) {
+        console.error('Chess send error', e);
+      }
+    }
+  };
+
+  const exitFun = () => {
+    socketService.send({ type: 'fun-exit' });
+    setFunToken(0);
+    setAcceptedFunGame(null);
+    setChessState(createInitialState());
+    setShowFunMenu(false);
+    setShowPlayAlongSubmenu(false);
+  };
+
   const skipPartner = async () => {
     if (!isStarted) return;
     
@@ -1060,6 +1295,9 @@ function AudioChat() {
     setWaitingMessage('');
     setMessages([]);
     setReplyingTo(null);
+    setFunToken(0);
+    setAcceptedFunGame(null);
+    setChessState(createInitialState());
     setError('');
     triggerRemoteBuffer(true);
     setAudioEnabled(true);
@@ -1091,6 +1329,21 @@ function AudioChat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (!showFunMenu) return;
+    const handleClickOutside = (e) => {
+      const inDesktop = funMenuRef.current && funMenuRef.current.contains(e.target);
+      const inMobile = funMenuMobileRef.current && funMenuMobileRef.current.contains(e.target);
+      if (!inDesktop && !inMobile) setShowFunMenu(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showFunMenu]);
 
   const sendMessage = () => {
     const trimmed = newMessage.trim();
@@ -1131,31 +1384,35 @@ function AudioChat() {
     setShowEmojiPicker(false);
   };
 
+  // Position chat box above keyboard on mobile using visual viewport (keeps input attached to keyboard)
+  const MOBILE_CHAT_HEIGHT = 200;
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 768) {
-        const initialHeight = window.innerHeight;
-        const currentHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        const keyboardHeight = initialHeight - currentHeight;
-        setKeyboardHeight(keyboardHeight > 0 ? keyboardHeight : 0);
-      }
-    };
-    const handleVisualViewportChange = () => {
+    const updateMobileChatPosition = () => {
+      if (window.innerWidth > 768) return;
       if (window.visualViewport) {
-        const keyboardHeight = window.innerHeight - window.visualViewport.height;
-        setKeyboardHeight(keyboardHeight > 0 ? keyboardHeight : 0);
+        const vv = window.visualViewport;
+        const top = vv.offsetTop + vv.height - MOBILE_CHAT_HEIGHT;
+        setMobileChatTop(top);
+        const kh = window.innerHeight - vv.height;
+        setKeyboardHeight(kh > 0 ? kh : 0);
+      } else {
+        setMobileChatTop(window.innerHeight - MOBILE_CHAT_HEIGHT);
+        setKeyboardHeight(0);
       }
     };
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleVisualViewportChange);
+      updateMobileChatPosition();
+      window.visualViewport.addEventListener('resize', updateMobileChatPosition);
+      window.visualViewport.addEventListener('scroll', updateMobileChatPosition);
     } else {
-      window.addEventListener('resize', handleResize);
+      window.addEventListener('resize', updateMobileChatPosition);
     }
     return () => {
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleVisualViewportChange);
+        window.visualViewport.removeEventListener('resize', updateMobileChatPosition);
+        window.visualViewport.removeEventListener('scroll', updateMobileChatPosition);
       } else {
-        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('resize', updateMobileChatPosition);
       }
     };
   }, []);
@@ -1256,7 +1513,36 @@ function AudioChat() {
       }
     };
 
+    const handleFunRequest = (msg) => {
+      setPendingFunRequest({ game: msg.game || 'chess' });
+      setShowFunMenu(false);
+      setShowPlayAlongSubmenu(false);
+    };
+    const handleFunAccept = (msg) => {
+      const game = msg?.game || 'chess';
+      setFunToken(1);
+      setAcceptedFunGame(game);
+      setAmIWhite(true);
+      if (game === 'chess') setChessState(createInitialState());
+      setShowFunMenu(false);
+      setShowPlayAlongSubmenu(false);
+    };
+    const handleFunExit = () => {
+      setFunToken(0);
+      setAcceptedFunGame(null);
+      setChessState(createInitialState());
+      setShowFunMenu(false);
+      setShowPlayAlongSubmenu(false);
+    };
+    const handleFunReject = () => {
+      setPendingFunRequest(null);
+    };
+
     socketService.on('matched', handleMatch);
+    socketService.on('fun-request', handleFunRequest);
+    socketService.on('fun-accept', handleFunAccept);
+    socketService.on('fun-reject', handleFunReject);
+    socketService.on('fun-exit', handleFunExit);
     socketService.on('signal', handleSignal);
     socketService.on('partner-left', handlePartnerLeft);
     socketService.on('partner-skipped', handlePartnerSkipped);
@@ -1274,11 +1560,49 @@ function AudioChat() {
       socketService.off('session-ready', handleSessionReady);
       socketService.off('search-cancelled', handleSearchCancelled);
       socketService.off('error', handleError);
+      socketService.off('fun-request', handleFunRequest);
+      socketService.off('fun-accept', handleFunAccept);
+      socketService.off('fun-reject', handleFunReject);
+      socketService.off('fun-exit', handleFunExit);
     };
   }, [isStarted]);
 
+  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+
   return (
     <AudioChatContainer>
+      {pendingFunRequest && (
+        <FunRequestOverlay>
+          <FunRequestCard>
+            <FunRequestText>
+              Stranger wants to play <strong>{funGameLabel}</strong>. Accept or reject?
+            </FunRequestText>
+            <FunRequestActions>
+              <StopButton
+                onClick={() => {
+                  socketService.send({ type: 'fun-reject' });
+                  setPendingFunRequest(null);
+                }}
+                style={{ background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', border: 'none' }}
+              >
+                Reject
+              </StopButton>
+              <StartChatButton
+                onClick={() => {
+                  socketService.send({ type: 'fun-accept', game: pendingFunRequest.game });
+                  setFunToken(1);
+                  setAcceptedFunGame(pendingFunRequest.game);
+                  setAmIWhite(false);
+                  if (pendingFunRequest.game === 'chess') setChessState(createInitialState());
+                  setPendingFunRequest(null);
+                }}
+              >
+                Accept
+              </StartChatButton>
+            </FunRequestActions>
+          </FunRequestCard>
+        </FunRequestOverlay>
+      )}
       <Header logo="Unitalks" hasSidebar={false} />
       
       <MainContent>
@@ -1331,26 +1655,47 @@ function AudioChat() {
                   onClick={skipPartner}
                   className="skip"
                   title="Skip to next stranger"
-                  disabled={!isStarted}
-                  style={{ opacity: isStarted ? 1 : 0.5, cursor: isStarted ? 'pointer' : 'not-allowed' }}
+                  disabled={!isStarted || (isWaiting && !isConnected)}
+                  style={{ opacity: isStarted && (!isWaiting || isConnected) ? 1 : 0.5, cursor: isStarted && (!isWaiting || isConnected) ? 'pointer' : 'not-allowed' }}
                 >
                   SKIP
                 </MobileControlButton>
-                <MobileControlButton
-                  onClick={isStarted ? stopChat : startNewChat}
-                  className={isStarted ? 'stop' : 'start'}
-                  title={isStarted ? "Stop chat" : "Start new chat"}
-                >
-                  {isStarted ? 'STOP' : 'START'}
-                </MobileControlButton>
+                {funToken !== 1 && (
+                  <MobileControlButton
+                    onClick={isStarted ? stopChat : startNewChat}
+                    className={isStarted ? 'stop' : 'start'}
+                    title={isStarted ? "Stop chat" : "Start new chat"}
+                  >
+                    {isStarted ? 'STOP' : 'START'}
+                  </MobileControlButton>
+                )}
+                {funToken === 1 && (
+                  <MobileControlButton
+                    onClick={exitFun}
+                    title="Exit fun game"
+                    style={{ marginLeft: 4, borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}
+                  >
+                    EXIT FUN
+                  </MobileControlButton>
+                )}
               </MobileAudioControls>
             </AudioFeed>
           </AudioFeedsContainer>
           
           <ChatSection>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-             
-            <ChatBox $keyboardHeight={keyboardHeight}>
+            {acceptedFunGame === 'chess' && (
+              <ChessArea>
+                <ChessBoard
+                  state={chessState}
+                  amIWhite={amIWhite}
+                  onMove={handleChessMove}
+                  disabled={!!chessState.gameOver || (chessState.turn === 'white' && !amIWhite) || (chessState.turn === 'black' && amIWhite)}
+                />
+              </ChessArea>
+            )}
+            {funToken !== 1 && (
+            <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess'}>
               <ChatMessages>
                 {messages.map((message) => (
                   <Message 
@@ -1388,6 +1733,47 @@ function AudioChat() {
                   </ReplyPreview>
                 )}
                 <InputRow>
+                  {isStarted && (
+                    <MobileFunWrap>
+                      <FunMenuWrap ref={funMenuMobileRef}>
+                        {funToken === 1 ? (
+                          <FunButtonSmall onClick={exitFun} title="Exit fun game" style={{ borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
+                            EXIT FUN
+                          </FunButtonSmall>
+                        ) : (
+                          <>
+                        <FunButtonSmall
+                          disabled={isWaiting && !isConnected}
+                          onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); setShowPlayAlongSubmenu(false); }}
+                          title="Fun features"
+                        >
+                          <ButtonIcon><FiZap /></ButtonIcon>
+                          Fun
+                        </FunButtonSmall>
+                        {showFunMenu && (
+                          <FunMenuPopover>
+                            <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                              <FiVideo size={18} /> Watch Along
+                            </FunMenuItem>
+                            <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                              <FiHeadphones size={18} /> Listen Along
+                            </FunMenuItem>
+                            <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
+                              <FiPlay size={18} /> Play Along
+                            </FunMenuItem>
+                            {showPlayAlongSubmenu && (
+                              <FunSubmenu>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
+                              </FunSubmenu>
+                            )}
+                          </FunMenuPopover>
+                        )}
+                            </>
+                          )}
+                      </FunMenuWrap>
+                    </MobileFunWrap>
+                  )}
                   <MessageInput
                     type="text"
                     placeholder={replyingTo ? "Type your reply..." : "Type a message..."}
@@ -1413,31 +1799,70 @@ function AudioChat() {
                 )}
               </ChatInput>
             </ChatBox>
+            )}
              
             <BottomControlsSection>
               <ChatControls>
                 {!isStarted ? (
-                  <StartChatButton onClick={startNewChat} title="Start chat">
-                    <ButtonIcon><FiMessageCircle /></ButtonIcon>
-                    Start Chat
-                  </StartChatButton>
+                  <ChatControlsStartRight>
+                    <StartChatButton onClick={startNewChat} title="Start chat">
+                      Start Chat
+                    </StartChatButton>
+                  </ChatControlsStartRight>
                 ) : (
                   <>
-                    <StopButton
-                      onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
-                      title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
-                    >
-                      <ButtonIcon><FiSquare /></ButtonIcon>
-                      Stop
-                    </StopButton>
-                    <SkipButton
-                      onClick={skipPartner}
-                      title="Skip to next stranger"
-                      disabled={!isStarted}
-                    >
-                      <ButtonIcon><FiSkipForward /></ButtonIcon>
-                      Skip
-                    </SkipButton>
+                    <FunMenuWrap ref={funMenuRef}>
+                      {funToken === 1 ? (
+                        <FunButton onClick={exitFun} title="Exit fun game" style={{ borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
+                          EXIT FUN
+                        </FunButton>
+                      ) : (
+                        <>
+                      <FunButton
+                        disabled={isWaiting && !isConnected}
+                        onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); setShowPlayAlongSubmenu(false); }}
+                        title="Fun features"
+                      >
+                        <ButtonIcon><FiZap /></ButtonIcon>
+                        Fun
+                      </FunButton>
+                      {showFunMenu && (
+                        <FunMenuPopover>
+                          <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                            <FiVideo size={18} /> Watch Along
+                          </FunMenuItem>
+                          <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                            <FiHeadphones size={18} /> Listen Along
+                          </FunMenuItem>
+                          <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
+                            <FiPlay size={18} /> Play Along
+                          </FunMenuItem>
+                          {showPlayAlongSubmenu && (
+                            <FunSubmenu>
+                              <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
+                              <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
+                            </FunSubmenu>
+                          )}
+                        </FunMenuPopover>
+                      )}
+                        </>
+                      )}
+                    </FunMenuWrap>
+                    <ChatControlsRight>
+                      <StopButton
+                        onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                        title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
+                      >
+                        Stop
+                      </StopButton>
+                      <SkipButton
+                        onClick={skipPartner}
+                        title="Skip to next stranger"
+                        disabled={!isStarted || (isWaiting && !isConnected)}
+                      >
+                        Skip
+                      </SkipButton>
+                    </ChatControlsRight>
                   </>
                 )}
               </ChatControls>

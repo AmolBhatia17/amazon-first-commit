@@ -22,7 +22,11 @@ export type ClientMessage =
   | { type: 'leave' }
   | { type: 'cancel' }
   | { type: 'acknowledge' }
-  | { type: 'pong' };
+  | { type: 'pong' }
+  | { type: 'fun-request'; game: string }
+  | { type: 'fun-accept'; game: string }
+  | { type: 'fun-reject' }
+  | { type: 'fun-exit' };
 
 export type ServerMessage =
   | { type: 'ready'; userId: string }
@@ -34,7 +38,11 @@ export type ServerMessage =
   | { type: 'session-ready' }
   | { type: 'search-cancelled' }
   | { type: 'error'; message: string }
-  | { type: 'ping' };
+  | { type: 'ping' }
+  | { type: 'fun-request'; from: string; game: string }
+  | { type: 'fun-accept'; from: string; game: string }
+  | { type: 'fun-reject'; from: string }
+  | { type: 'fun-exit'; from: string };
 
 export interface Session {
   sessionId: string;
