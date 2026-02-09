@@ -6,11 +6,12 @@ import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 
 const StartChatContainer = styled.div`
-  height: 100vh;
+  min-height: 100vh;
   max-width: 100vw;
   background: ${({ theme }) => theme.colors.appBg};
   color: #F8FAFC;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   display: flex;
   flex-direction: column;
@@ -38,6 +39,12 @@ const MainContent = styled.div`
       radial-gradient(60% 80% at 50% 20%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.35) 100%),
       radial-gradient(600px 300px at 50% 10%, rgba(29,185,84,0.15), rgba(0,0,0,0) 60%);
     z-index: 0;
+  }
+
+  @media (max-width: 768px) {
+    height: auto;
+    margin-top: 0;
+    padding: 96px 16px 40px;
   }
 `;
 

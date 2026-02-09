@@ -4,7 +4,7 @@ import styled from 'styled-components';
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: #000;
   display: grid;
   place-items: center;
   z-index: 2000;
@@ -50,7 +50,7 @@ const Input = styled.input`
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(18,18,18,0.9);
+  background: #000;
   color: #fff;
   outline: none;
 `;
@@ -60,7 +60,7 @@ const Textarea = styled.textarea`
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(18,18,18,0.9);
+  background: #000;
   color: #fff;
   outline: none;
   min-height: 90px;

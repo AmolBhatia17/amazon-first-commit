@@ -50,6 +50,11 @@ const VideoSection = styled.div`
   
   @media (max-width: 768px) {
     flex-direction: column;
+    ${({ $isFullScreenMobile }) =>
+      $isFullScreenMobile &&
+      `
+        height: calc(100vh - 64px);
+      `}
   }
 `;
 
@@ -61,8 +66,17 @@ const VideoFeedsContainer = styled.div`
   
   @media (max-width: 768px) {
     width: 100%;
-    height: 40%;
-    flex-direction: row;
+    ${({ $isFullScreenMobile }) =>
+      $isFullScreenMobile
+        ? `
+          height: 100%;
+          flex-direction: column;
+          position: relative;
+        `
+        : `
+          height: 40%;
+          flex-direction: row;
+        `}
   }
 `;
 
@@ -91,6 +105,35 @@ const VideoFeed = styled.div`
     &:last-child {
       border-right: none;
     }
+
+    ${({ $isRemote }) =>
+      !$isRemote &&
+      `
+        border: 2px solid rgba(29,185,84,0.9);
+        box-shadow: 0 0 10px rgba(29,185,84,0.6);
+      `}
+
+    ${({ $isFullScreenMobile, $isRemote }) =>
+      $isFullScreenMobile &&
+      $isRemote &&
+      `
+        flex: 1;
+      `}
+
+    ${({ $isFullScreenMobile, $isRemote }) =>
+      $isFullScreenMobile &&
+      !$isRemote &&
+      `
+        position: absolute;
+        width: 120px;
+        height: 170px;
+        right: 12px;
+        bottom: 110px;
+        border-radius: 10px;
+        overflow: hidden;
+        z-index: 3;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.6);
+      `}
   }
 `;
 
@@ -184,16 +227,22 @@ const MobileVideoControls = styled.div`
   @media (max-width: 768px) {
     display: flex;
     position: absolute;
-    bottom: 8px;
-    left: 8px;
-    gap: 8px;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 500px;
+    padding: 0 30px;
+    justify-content: ${({ $hasSession }) => ($hasSession ? 'space-between' : 'center')};
+    gap: 12px;
     align-items: center;
+    z-index: 4;
   }
 `;
 
 const MobileControlButton = styled.button`
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 12px 40px;
+  border-radius: 999px;
   border: none;
   color: #fff;
   display: flex;
@@ -201,7 +250,7 @@ const MobileControlButton = styled.button`
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 0.8rem;
+  font-size: 1.3rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -243,6 +292,49 @@ const MobileControlButton = styled.button`
     &:hover {
       background: rgba(245, 158, 11, 0.4);
     }
+  }
+`;
+
+const FunMobileControls = styled.div`
+  display: none;
+  
+  @media (max-width: 768px) {
+    display: flex;
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 8px;
+    align-items: center;
+    z-index: 5;
+  }
+`;
+
+const FunMobileButton = styled.button`
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1.1rem;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  
+  &.danger {
+    border-color: rgba(239,68,68,0.7);
+  }
+  
+  &.primary {
+    border-color: rgba(29,185,84,0.8);
   }
 `;
 
@@ -300,7 +392,14 @@ const ChatSection = styled.div`
   padding-bottom: 80px;
   
   @media (max-width: 768px) {
-    height: 60%;
+    ${({ $isFullScreenMobile }) =>
+      $isFullScreenMobile
+        ? `
+          display: none;
+        `
+        : `
+          height: 60%;
+        `}
   }
 `;
 
@@ -1097,7 +1196,7 @@ function VideoChat() {
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [showRemoteBuffer, setShowRemoteBuffer] = useState(false);
   const [showFunMenu, setShowFunMenu] = useState(false);
-  const [showPlayAlongSubmenu, setShowPlayAlongSubmenu] = useState(false);
+  const [showPlayAlongSubmenu, setShowPlayAlongSubmenu] = useState(true);
   const [funToken, setFunToken] = useState(0);
   const [pendingFunRequest, setPendingFunRequest] = useState(null);
   const [acceptedFunGame, setAcceptedFunGame] = useState(null);
@@ -1568,17 +1667,17 @@ function VideoChat() {
 
   useEffect(() => {
     if (!showFunMenu) return;
-    const handleClickOutside = (e) => {
-      const inDesktop = funMenuRef.current && funMenuRef.current.contains(e.target);
-      const inMobile = funMenuMobileRef.current && funMenuMobileRef.current.contains(e.target);
-      if (!inDesktop && !inMobile) setShowFunMenu(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside, { passive: true });
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
+    // On desktop, close Fun menu when clicking outside; on mobile, rely on explicit actions
+    if (window.innerWidth > 768) {
+      const handleClickOutside = (e) => {
+        const inDesktop = funMenuRef.current && funMenuRef.current.contains(e.target);
+        if (!inDesktop) setShowFunMenu(false);
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
   }, [showFunMenu]);
 
   const sendMessage = () => {
@@ -1861,6 +1960,10 @@ function VideoChat() {
 
   const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
 
+  const isFunMode = funToken === 1 || !!acceptedFunGame;
+  // On mobile, use the full-screen video layout by default (WhatsApp-style) whenever not in FUN mode.
+  const isMobileFullscreen = !isFunMode;
+
   return (
     <VideoChatContainer>
       {pendingFunRequest && (
@@ -1901,9 +2004,9 @@ function VideoChat() {
       />
       
       <MainContent>
-        <VideoSection>
-          <VideoFeedsContainer>
-            <VideoFeed>
+        <VideoSection $isFullScreenMobile={isMobileFullscreen}>
+          <VideoFeedsContainer $isFullScreenMobile={isMobileFullscreen}>
+            <VideoFeed $isFullScreenMobile={isMobileFullscreen} $isRemote>
               <VideoElement
                 ref={remoteVideoRef}
                 autoPlay
@@ -1922,13 +2025,91 @@ function VideoChat() {
                 </RemoteBufferOverlay>
               )}
               <VideoLabel>Stranger</VideoLabel>
+              <MobileVideoControls $hasSession={isStarted && !isFunMode}>
+                {!isStarted ? (
+                  <MobileControlButton
+                    onClick={startNewChat}
+                    className="start"
+                    title="Start chat"
+                  >
+                    Start Chat
+                  </MobileControlButton>
+                ) : (!isFunMode && (
+                  <>
+                    <MobileControlButton
+                      onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                      className="stop"
+                      title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
+                    >
+                      <FiSquare />
+                    </MobileControlButton>
+                    <FunMenuWrap ref={funMenuMobileRef}>
+                      {funToken === 1 ? (
+                        <MobileControlButton
+                          onClick={exitFun}
+                          className="fun"
+                          title="Exit fun game"
+                          style={{ borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}
+                        >
+                          EXIT FUN
+                        </MobileControlButton>
+                      ) : (
+                        <>
+                          <MobileControlButton
+                            className="fun"
+                            disabled={isWaiting && !isConnected}
+                            onClick={() => {
+                              if (isWaiting && !isConnected) return;
+                              setShowFunMenu((v) => !v);
+                            }}
+                            title="Fun features"
+                          >
+                            <ButtonIcon><FiZap /></ButtonIcon>
+                            Fun
+                          </MobileControlButton>
+                          {showFunMenu && (
+                            <FunMenuPopover>
+                              <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
+                                <FiVideo size={18} /> Watch Along
+                              </FunMenuItem>
+                              <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
+                                <FiHeadphones size={18} /> Listen Along
+                              </FunMenuItem>
+                              <FunMenuItem>
+                                <FiPlay size={18} /> Play Along
+                              </FunMenuItem>
+                              <FunSubmenu>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
+                                  Chess
+                                </FunMenuItem>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
+                                  Truth and Dare
+                                </FunMenuItem>
+                              </FunSubmenu>
+                            </FunMenuPopover>
+                          )}
+                        </>
+                      )}
+                    </FunMenuWrap>
+                    <MobileControlButton
+                      onClick={skipPartner}
+                      className="skip"
+                      title="Skip to next stranger"
+                      disabled={!isStarted || (isWaiting && !isConnected)}
+                      style={{ opacity: isStarted && (!isWaiting || isConnected) ? 1 : 0.5, cursor: isStarted && (!isWaiting || isConnected) ? 'pointer' : 'not-allowed' }}
+                    >
+                      <FiSend />
+                    </MobileControlButton>
+                  </>
+                ))}
+              </MobileVideoControls>
               <Watermark>
                 <WatermarkLogo src="/assets/logos/logo.png" alt="UniTalks Logo" />
                 <WatermarkText>UniTalks</WatermarkText>
               </Watermark>
             </VideoFeed>
             
-                    <VideoFeed>
+                    <VideoFeed $isFullScreenMobile={isMobileFullscreen}>
                       {hasLocalStream ? (
                         <VideoElement
                           ref={localVideoRef}
@@ -1950,51 +2131,35 @@ function VideoChat() {
                       >
                         {audioEnabled ? <FiMic /> : <FiMicOff />}
                       </VideoOverlayButton>
-                      <MobileVideoControls>
-                        {!isStarted ? (
-                          <MobileControlButton
-                            onClick={startNewChat}
-                            className="start"
-                            title="Start chat"
+                      {funToken === 1 && (
+                        <FunMobileControls>
+                          <FunMobileButton
+                            className="danger"
+                            onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                            title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
                           >
-                            Start Chat
-                          </MobileControlButton>
-                        ) : (
-                          <>
-                            <MobileControlButton
-                              onClick={skipPartner}
-                              className="skip"
-                              title="Skip to next stranger"
-                              disabled={!isStarted || (isWaiting && !isConnected)}
-                              style={{ opacity: isStarted && (!isWaiting || isConnected) ? 1 : 0.5, cursor: isStarted && (!isWaiting || isConnected) ? 'pointer' : 'not-allowed' }}
-                            >
-                              Skip
-                            </MobileControlButton>
-                            {funToken !== 1 && (
-                              <MobileControlButton
-                                onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
-                                className="stop"
-                                title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
-                              >
-                                Stop
-                              </MobileControlButton>
-                            )}
-                            {funToken === 1 && (
-                              <MobileControlButton
-                                onClick={exitFun}
-                                title="Exit fun game"
-                                style={{ marginLeft: 4, borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}
-                              >
-                                EXIT FUN
-                              </MobileControlButton>
-                            )}
-                          </>
-                        )}
-                      </MobileVideoControls>
+                            <FiSquare />
+                          </FunMobileButton>
+                          <FunMobileButton
+                            onClick={exitFun}
+                            title="Exit fun game"
+                          >
+                            <FiZap />
+                          </FunMobileButton>
+                          <FunMobileButton
+                            className="primary"
+                            onClick={skipPartner}
+                            title="Skip to next stranger"
+                            disabled={!isStarted || (isWaiting && !isConnected)}
+                          >
+                            <FiSend />
+                          </FunMobileButton>
+                        </FunMobileControls>
+                      )}
                     </VideoFeed>
           </VideoFeedsContainer>
           
-          <ChatSection>
+          <ChatSection $isFullScreenMobile={isMobileFullscreen}>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
             {acceptedFunGame === 'chess' && (
               <ChessArea>
@@ -2056,7 +2221,7 @@ function VideoChat() {
                              <>
                            <FunButtonSmall
                              disabled={isWaiting && !isConnected}
-                             onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); setShowPlayAlongSubmenu(false); }}
+                             onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); }}
                              title="Fun features"
                            >
                              <ButtonIcon><FiZap /></ButtonIcon>
@@ -2064,21 +2229,19 @@ function VideoChat() {
                            </FunButtonSmall>
                            {showFunMenu && (
                              <FunMenuPopover>
-                               <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                               <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
                                  <FiVideo size={18} /> Watch Along
                                </FunMenuItem>
-                               <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                               <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
                                  <FiHeadphones size={18} /> Listen Along
                                </FunMenuItem>
-                               <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
+                               <FunMenuItem>
                                  <FiPlay size={18} /> Play Along
                                </FunMenuItem>
-                               {showPlayAlongSubmenu && (
-                                 <FunSubmenu>
-                                   <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
-                                   <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
-                                 </FunSubmenu>
-                               )}
+                               <FunSubmenu>
+                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>Chess</FunMenuItem>
+                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>Truth and Dare</FunMenuItem>
+                               </FunSubmenu>
                              </FunMenuPopover>
                            )}
                              </>
@@ -2132,7 +2295,7 @@ function VideoChat() {
                               <>
                             <FunButton
                               disabled={isWaiting && !isConnected}
-                              onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); setShowPlayAlongSubmenu(false); }}
+                              onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); }}
                               title="Fun features"
                             >
                               <ButtonIcon><FiZap /></ButtonIcon>
@@ -2140,25 +2303,23 @@ function VideoChat() {
                             </FunButton>
                             {showFunMenu && (
                               <FunMenuPopover>
-                                <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                                <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
                                   <FiVideo size={18} /> Watch Along
                                 </FunMenuItem>
-                                <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                                <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
                                   <FiHeadphones size={18} /> Listen Along
                                 </FunMenuItem>
-                                <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
+                                <FunMenuItem>
                                   <FiPlay size={18} /> Play Along
                                 </FunMenuItem>
-                                {showPlayAlongSubmenu && (
-                                  <FunSubmenu>
-                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
-                                      Chess
-                                    </FunMenuItem>
-                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
-                                      Truth and Dare
-                                    </FunMenuItem>
-                                  </FunSubmenu>
-                                )}
+                                <FunSubmenu>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
+                                    Chess
+                                  </FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
+                                    Truth and Dare
+                                  </FunMenuItem>
+                                </FunSubmenu>
                               </FunMenuPopover>
                             )}
                               </>
