@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
-import styled, { keyframes } from 'styled-components';
-import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiZap, FiVideo, FiPlay } from 'react-icons/fi';
+import styled, { keyframes, css } from 'styled-components';
+import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiSkipBack, FiZap, FiVideo, FiPlay } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
@@ -307,6 +307,391 @@ const ChessArea = styled.div`
   width: 100%;
   padding: 16px;
   background: #0d0d0d;
+`;
+
+const MusicPlayerContainer = styled.div`
+  width: 100%;
+  max-width: min(90vw, 600px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: #e5e7eb;
+  background: radial-gradient(circle at top, rgba(34,197,94,0.18) 0, rgba(15,23,42,0.96) 40%, rgba(3,7,18,0.98) 100%);
+  border-radius: 18px;
+  padding: 16px 18px 18px;
+  border: 1px solid rgba(34,197,94,0.35);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 16px 40px rgba(0,0,0,0.75),
+    0 0 32px rgba(34,197,94,0.22);
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  
+  @media (max-width: 768px) {
+    max-width: 100%;
+    padding: 12px 12px 14px;
+    gap: 12px;
+    border-radius: 14px;
+    box-shadow:
+      0 0 0 1px rgba(15,23,42,1),
+      0 10px 26px rgba(0,0,0,0.7),
+      0 0 22px rgba(34,197,94,0.18);
+  }
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.25);
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(34,197,94,0.6);
+    border-radius: 3px;
+    
+    &:hover {
+      background: rgba(34,197,94,0.8);
+    }
+  }
+`;
+
+const MusicSearchSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const MusicTrackInput = styled.input`
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(148,163,184,0.4);
+  background: rgba(0,0,0,0.4);
+  color: #e5e7eb;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: rgba(29,185,84,0.6);
+    box-shadow: 0 0 0 3px rgba(29,185,84,0.1);
+  }
+  
+  &::placeholder {
+    color: #6b7280;
+  }
+`;
+
+const MusicStatusText = styled.div`
+  font-size: 0.85rem;
+  color: #9ca3af;
+  text-align: center;
+`;
+
+const MusicPlayerMain = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  flex-shrink: 0;
+  
+  @media (max-width: 768px) {
+    gap: 12px;
+  }
+`;
+
+const MusicArtworkSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  
+  @media (max-width: 768px) {
+    gap: 8px;
+  }
+`;
+
+const MusicArtwork = styled.img`
+  width: min(60vw, 240px);
+  height: min(60vw, 240px);
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  border: 2px solid rgba(29,185,84,0.3);
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+  
+  &:hover {
+    transform: scale(1.02);
+  }
+  
+  @media (max-width: 768px) {
+    width: min(50vw, 180px);
+    height: min(50vw, 180px);
+    border-radius: 10px;
+  }
+`;
+
+const MusicInfoSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+`;
+
+const MusicTitle = styled.h3`
+  font-size: clamp(1rem, 4vw, 1.5rem);
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.3;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  
+  @media (max-width: 768px) {
+    font-size: clamp(0.9rem, 4vw, 1.2rem);
+  }
+`;
+
+const MusicArtist = styled.div`
+  font-size: clamp(0.85rem, 3vw, 1rem);
+  color: #9ca3af;
+  font-weight: 500;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  
+  @media (max-width: 768px) {
+    font-size: clamp(0.75rem, 3vw, 0.9rem);
+  }
+`;
+
+const MusicDurationText = styled.div`
+  font-size: clamp(0.7rem, 2.5vw, 0.85rem);
+  color: #6b7280;
+  margin-top: 4px;
+`;
+
+const MusicProgressSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const MusicEqualizer = styled.div`
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 20px;
+  margin-bottom: 4px;
+`;
+
+const eqBarPulse = keyframes`
+  0% { transform: scaleY(0.4); opacity: 0.9; }
+  25% { transform: scaleY(1); opacity: 1; }
+  50% { transform: scaleY(0.5); opacity: 0.8; }
+  75% { transform: scaleY(0.9); opacity: 1; }
+  100% { transform: scaleY(0.4); opacity: 0.9; }
+`;
+
+const MusicEqualizerBar = styled.div`
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to top, #22c55e, #bbf7d0);
+  transform-origin: bottom;
+  opacity: 0.85;
+  ${({ $delay = 0 }) => css`
+    animation: ${eqBarPulse} 1.1s ease-in-out ${$delay}ms infinite;
+  `}
+  ${({ $isPlaying }) => !$isPlaying && 'animation-play-state: paused; transform: scaleY(0.35); opacity: 0.6;'}
+`;
+
+const MusicProgressRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const MusicProgressInput = styled.input`
+  flex: 1;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(31,41,55,0.9);
+  outline: none;
+  cursor: pointer;
+  transition: height 0.2s ease;
+
+  &:hover {
+    height: 8px;
+  }
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #1DB954;
+    box-shadow: 0 0 8px rgba(29,185,84,0.8);
+    cursor: grab;
+    
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  &::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #1DB954;
+    box-shadow: 0 0 8px rgba(29,185,84,0.8);
+    border: none;
+    cursor: grab;
+    
+    &:active {
+      cursor: grabbing;
+    }
+  }
+`;
+
+const MusicTimeText = styled.div`
+  font-size: 0.85rem;
+  color: #9ca3af;
+  min-width: 80px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+`;
+
+const MusicControlsRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-shrink: 0;
+  
+  @media (max-width: 768px) {
+    gap: 12px;
+  }
+`;
+
+const MusicControlButton = styled.button`
+  width: clamp(40px, 10vw, 50px);
+  height: clamp(40px, 10vw, 50px);
+  border-radius: 50%;
+  border: 2px solid rgba(148,163,184,0.4);
+  background: rgba(0,0,0,0.5);
+  color: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: clamp(1rem, 3vw, 1.3rem);
+  flex-shrink: 0;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 12px rgba(29,185,84,0.4);
+    border-color: rgba(29,185,84,0.8);
+    background: rgba(29,185,84,0.1);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(1);
+  }
+  
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  
+  &.play-pause {
+    width: clamp(52px, 12vw, 64px);
+    height: clamp(52px, 12vw, 64px);
+    font-size: clamp(1.2rem, 3.5vw, 1.6rem);
+    background: rgba(29,185,84,0.2);
+    border-color: rgba(29,185,84,0.6);
+    
+    &:hover:not(:disabled) {
+      background: rgba(29,185,84,0.3);
+      box-shadow: 0 6px 20px rgba(29,185,84,0.5);
+    }
+  }
+  
+  @media (max-width: 768px) {
+    width: clamp(36px, 8vw, 44px);
+    height: clamp(36px, 8vw, 44px);
+    font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+    
+    &.play-pause {
+      width: clamp(48px, 10vw, 56px);
+      height: clamp(48px, 10vw, 56px);
+      font-size: clamp(1.1rem, 3vw, 1.3rem);
+    }
+  }
+`;
+
+const MusicLyricsSection = styled.div`
+  max-height: min(30vh, 200px);
+  overflow-y: auto;
+  padding: 12px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  border: 1px solid rgba(29,185,84,0.2);
+  flex-shrink: 0;
+  
+  @media (max-width: 768px) {
+    max-height: min(25vh, 150px);
+    padding: 10px;
+    border-radius: 8px;
+  }
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.2);
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(29,185,84,0.5);
+    border-radius: 3px;
+    
+    &:hover {
+      background: rgba(29,185,84,0.7);
+    }
+  }
+`;
+
+const MusicLyricsText = styled.div`
+  font-size: clamp(0.8rem, 2.5vw, 0.95rem);
+  line-height: 1.6;
+  color: #d1d5db;
+  white-space: pre-line;
+  text-align: center;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  
+  @media (max-width: 768px) {
+    line-height: 1.5;
+  }
+  
+  &:empty::before {
+    content: 'No lyrics available';
+    color: #6b7280;
+    font-style: italic;
+  }
 `;
 
 const ButtonIcon = styled.span`
@@ -922,12 +1307,25 @@ function AudioChat() {
   const [acceptedFunGame, setAcceptedFunGame] = useState(null);
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
+  const [isMusicHost, setIsMusicHost] = useState(false);
+  const [musicTrackUrl, setMusicTrackUrl] = useState('');
+  const [musicTrackTitle, setMusicTrackTitle] = useState('');
+  const [musicTrackArtist, setMusicTrackArtist] = useState('');
+  const [musicTrackArtwork, setMusicTrackArtwork] = useState('');
+  const [musicTrackLyrics, setMusicTrackLyrics] = useState('');
+  const [musicTrackDuration, setMusicTrackDuration] = useState(0);
+  const [saavnQuery, setSaavnQuery] = useState('');
+  const [isLoadingTrack, setIsLoadingTrack] = useState(false);
+  const [musicIsPlaying, setMusicIsPlaying] = useState(false);
+  const [musicPosition, setMusicPosition] = useState(0);
+  const [musicDuration, setMusicDuration] = useState(0);
   const hasRemoteStreamRef = useRef(false);
   const funMenuRef = useRef(null);
   const funMenuMobileRef = useRef(null);
   
   const remoteAudioRef = useRef(null);
   const localStreamRef = useRef(null);
+  const musicAudioRef = useRef(null);
   const messagesEndRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const partnerIdRef = useRef(null);
@@ -1102,6 +1500,10 @@ function AudioChat() {
             });
             return;
           }
+          if (obj && obj.type === 'music-control') {
+            handleIncomingMusicControl(obj);
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -1204,6 +1606,171 @@ function AudioChat() {
       socketService.send({ type: 'join', mode: 'audio' });
       console.log('[socket] 🔄 rejoining AUDIO queue');
     }, 100);
+  };
+
+  const sendMusicControl = (payload) => {
+    const peer = peerConnectionRef.current;
+    if (!peer || typeof peer.send !== 'function') return;
+    try {
+      peer.send(JSON.stringify({
+        type: 'music-control',
+        ...payload,
+        sentAt: Date.now(),
+      }));
+    } catch (e) {
+      console.error('Music control send error', e);
+    }
+  };
+
+  const applyMusicStateToAudio = (trackUrl, isPlaying, positionSeconds) => {
+    const audio = musicAudioRef.current;
+    if (!audio) return;
+    if (trackUrl && audio.src !== trackUrl) {
+      audio.src = trackUrl;
+    }
+    if (!Number.isNaN(positionSeconds) && isFinite(positionSeconds)) {
+      try {
+        audio.currentTime = Math.max(0, positionSeconds);
+      } catch (_) {}
+    }
+    if (isPlaying) {
+      audio.play?.().catch(err => console.error('Music play error', err));
+    } else {
+      audio.pause?.();
+    }
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds || !Number.isFinite(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleIncomingMusicControl = (msg) => {
+    const { action, trackUrl: incomingUrl, position, sentAt, title, artist, artwork, lyrics, duration } = msg;
+    if (action === 'change-track') {
+      const pos = typeof position === 'number' ? position : 0;
+      setMusicTrackUrl(incomingUrl || '');
+      setMusicTrackTitle(title || '');
+      setMusicTrackArtist(artist || '');
+      setMusicTrackArtwork(artwork || '');
+      setMusicTrackLyrics(lyrics || '');
+      const safeDuration = typeof duration === 'number' ? duration : 0;
+      setMusicTrackDuration(safeDuration);
+      if (safeDuration > 0) {
+        setMusicDuration(safeDuration);
+      }
+      setMusicIsPlaying(true);
+      setMusicPosition(pos);
+      const effectivePos = sentAt ? pos + (Date.now() - sentAt) / 1000 : pos;
+      applyMusicStateToAudio(incomingUrl || '', true, effectivePos);
+      return;
+    }
+    if (action === 'play') {
+      const pos = typeof position === 'number' ? position : musicPosition;
+      setMusicIsPlaying(true);
+      setMusicPosition(pos);
+      const effectivePos = sentAt ? pos + (Date.now() - sentAt) / 1000 : pos;
+      applyMusicStateToAudio(musicTrackUrl, true, effectivePos);
+      return;
+    }
+    if (action === 'pause') {
+      const pos = typeof position === 'number' ? position : musicPosition;
+      setMusicIsPlaying(false);
+      setMusicPosition(pos);
+      applyMusicStateToAudio(musicTrackUrl, false, pos);
+      return;
+    }
+    if (action === 'seek') {
+      const pos = typeof position === 'number' ? position : musicPosition;
+      // Treat seek as an authoritative jump to a specific timestamp, without
+      // latency compensation, to avoid overshooting when skipping or dragging.
+      setMusicPosition(pos);
+      applyMusicStateToAudio(musicTrackUrl, musicIsPlaying, pos);
+    }
+  };
+
+  useEffect(() => {
+    const audio = musicAudioRef.current;
+    // Only attach listeners when listen-along is active and the <audio> exists
+    if (!audio || acceptedFunGame !== 'listen-along') return;
+
+    const handleTimeUpdate = () => {
+      setMusicPosition(audio.currentTime || 0);
+      if (!Number.isNaN(audio.duration) && isFinite(audio.duration)) {
+        setMusicDuration(audio.duration);
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      if (!Number.isNaN(audio.duration) && isFinite(audio.duration)) {
+        setMusicDuration(audio.duration);
+      }
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    };
+  }, [acceptedFunGame, musicTrackUrl]);
+
+  const JIOSAAVN_API_BASE = 'https://saavnapi-nine.vercel.app/result/?query=';
+
+  const loadSaavnTrack = async () => {
+    const query = saavnQuery.trim();
+    if (!query) return;
+    try {
+      setIsLoadingTrack(true);
+      // Stop any existing track cleanly before loading a new one
+      const existingAudio = musicAudioRef.current;
+      if (existingAudio) {
+        try {
+          existingAudio.pause();
+          existingAudio.currentTime = 0;
+        } catch (_) {}
+      }
+      const resp = await fetch(`${JIOSAAVN_API_BASE}${encodeURIComponent(query)}&lyrics=true`);
+      const data = await resp.json().catch(() => null);
+      const first = Array.isArray(data) ? data[0] : data;
+      if (!first || !(first.media_url || first.url)) {
+        console.error('JioSaavn API: no playable link', data);
+        return;
+      }
+      const streamUrl = first.media_url || first.url;
+      const title = first.song || first.title || '';
+      const artist = first.singers || first.music || '';
+      const artwork = first.image || first.image_url || '';
+      const lyrics = first.lyrics || '';
+      const duration = parseInt(first.duration, 10) || 0;
+      setMusicTrackUrl(streamUrl);
+      setMusicTrackTitle(title);
+      setMusicTrackArtist(artist);
+      setMusicTrackArtwork(artwork);
+      setMusicTrackLyrics(lyrics);
+      setMusicTrackDuration(duration);
+      setMusicDuration(duration);
+      setMusicIsPlaying(true);
+      setMusicPosition(0);
+      applyMusicStateToAudio(streamUrl, true, 0);
+      sendMusicControl({
+        action: 'change-track',
+        trackUrl: streamUrl,
+        title,
+        artist,
+        artwork,
+        lyrics,
+        duration,
+        position: 0,
+      });
+    } catch (e) {
+      console.error('JioSaavn API error', e);
+    } finally {
+      setIsLoadingTrack(false);
+    }
   };
 
   const startNewChat = async () => {
@@ -1530,8 +2097,13 @@ function AudioChat() {
       const game = msg?.game || 'chess';
       setFunToken(1);
       setAcceptedFunGame(game);
-      setAmIWhite(true);
-      if (game === 'chess') setChessState(createInitialState());
+      if (game === 'chess') {
+        setAmIWhite(true);
+        setChessState(createInitialState());
+      }
+      if (game === 'listen-along') {
+        setIsMusicHost(true);
+      }
       setShowFunMenu(false);
       setShowPlayAlongSubmenu(false);
     };
@@ -1539,6 +2111,7 @@ function AudioChat() {
       setFunToken(0);
       setAcceptedFunGame(null);
       setChessState(createInitialState());
+      setIsMusicHost(false);
       setShowFunMenu(false);
       setShowPlayAlongSubmenu(false);
     };
@@ -1600,8 +2173,13 @@ function AudioChat() {
                   socketService.send({ type: 'fun-accept', game: pendingFunRequest.game });
                   setFunToken(1);
                   setAcceptedFunGame(pendingFunRequest.game);
-                  setAmIWhite(false);
-                  if (pendingFunRequest.game === 'chess') setChessState(createInitialState());
+                  if (pendingFunRequest.game === 'chess') {
+                    setAmIWhite(false);
+                    setChessState(createInitialState());
+                  }
+                  if (pendingFunRequest.game === 'listen-along') {
+                    setIsMusicHost(false);
+                  }
                   setPendingFunRequest(null);
                 }}
               >
@@ -1692,14 +2270,187 @@ function AudioChat() {
           
           <ChatSection>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-            {acceptedFunGame === 'chess' && (
+            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
               <ChessArea>
-                <ChessBoard
-                  state={chessState}
-                  amIWhite={amIWhite}
-                  onMove={handleChessMove}
-                  disabled={!!chessState.gameOver || (chessState.turn === 'white' && !amIWhite) || (chessState.turn === 'black' && amIWhite)}
-                />
+                {acceptedFunGame === 'chess' && (
+                  <ChessBoard
+                    state={chessState}
+                    amIWhite={amIWhite}
+                    onMove={handleChessMove}
+                    disabled={!!chessState.gameOver || (chessState.turn === 'white' && !amIWhite) || (chessState.turn === 'black' && amIWhite)}
+                  />
+                )}
+                {acceptedFunGame === 'listen-along' && (
+                  <MusicPlayerContainer>
+                    {isMusicHost && (
+                      <MusicSearchSection>
+                        <MusicTrackInput
+                          type="text"
+                          placeholder="Search songs on JioSaavn..."
+                          value={saavnQuery}
+                          onChange={(e) => setSaavnQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') loadSaavnTrack(); }}
+                          disabled={isLoadingTrack}
+                        />
+                        <MusicStatusText>
+                          {isLoadingTrack ? 'Loading track…' : 'Press Enter to search and play'}
+                        </MusicStatusText>
+                      </MusicSearchSection>
+                    )}
+                    {!isMusicHost && (
+                      <MusicStatusText>
+                        Your partner is controlling the music. You are listening along.
+                      </MusicStatusText>
+                    )}
+                    {musicTrackTitle && (
+                      <MusicPlayerMain>
+                        <MusicArtworkSection>
+                          {musicTrackArtwork && (
+                            <MusicArtwork src={musicTrackArtwork} alt={musicTrackTitle} />
+                          )}
+                          <MusicInfoSection>
+                            <MusicTitle>{musicTrackTitle}</MusicTitle>
+                            <MusicArtist>{musicTrackArtist || 'Unknown Artist'}</MusicArtist>
+                            {musicTrackDuration > 0 && (
+                              <MusicDurationText>Duration: {formatDuration(musicTrackDuration)}</MusicDurationText>
+                            )}
+                          </MusicInfoSection>
+                        </MusicArtworkSection>
+                        <MusicProgressSection>
+                          <MusicEqualizer>
+                            <MusicEqualizerBar $isPlaying={musicIsPlaying} $delay={0} />
+                            <MusicEqualizerBar $isPlaying={musicIsPlaying} $delay={120} />
+                            <MusicEqualizerBar $isPlaying={musicIsPlaying} $delay={240} />
+                            <MusicEqualizerBar $isPlaying={musicIsPlaying} $delay={360} />
+                            <MusicEqualizerBar $isPlaying={musicIsPlaying} $delay={480} />
+                          </MusicEqualizer>
+                          <MusicProgressRow>
+                            <MusicTimeText>{formatDuration(musicPosition)}</MusicTimeText>
+                            <MusicProgressInput
+                              type="range"
+                              min={0}
+                              max={musicDuration || musicTrackDuration || 0}
+                              step={0.5}
+                              value={Math.max(0, Math.min(musicPosition, musicDuration || musicTrackDuration || 0))}
+                              onChange={(e) => {
+                                const nextPos = parseFloat(e.target.value) || 0;
+                                setMusicPosition(nextPos);
+                              }}
+                              onMouseUp={(e) => {
+                                const nextPos = parseFloat(e.target.value) || 0;
+                                if (!musicTrackUrl) return;
+                                applyMusicStateToAudio(musicTrackUrl, musicIsPlaying, nextPos);
+                                sendMusicControl({
+                                  action: 'seek',
+                                  trackUrl: musicTrackUrl,
+                                  position: nextPos,
+                                });
+                              }}
+                              onTouchEnd={(e) => {
+                                const target = e.target;
+                                const nextPos = parseFloat(target.value) || 0;
+                                if (!musicTrackUrl) return;
+                                applyMusicStateToAudio(musicTrackUrl, musicIsPlaying, nextPos);
+                                sendMusicControl({
+                                  action: 'seek',
+                                  trackUrl: musicTrackUrl,
+                                  position: nextPos,
+                                });
+                              }}
+                            />
+                            <MusicTimeText>{formatDuration(musicDuration || musicTrackDuration || 0)}</MusicTimeText>
+                          </MusicProgressRow>
+                        </MusicProgressSection>
+                        <MusicControlsRow>
+                          <MusicControlButton
+                            disabled={!musicTrackUrl}
+                            onClick={() => {
+                              const audio = musicAudioRef.current;
+                              if (!audio) return;
+                              const nextPos = Math.max(0, audio.currentTime - 10);
+                              setMusicPosition(nextPos);
+                              applyMusicStateToAudio(musicTrackUrl, musicIsPlaying, nextPos);
+                              sendMusicControl({
+                                action: 'seek',
+                                trackUrl: musicTrackUrl,
+                                position: nextPos,
+                              });
+                            }}
+                            title="Rewind 10s"
+                          >
+                            <FiSkipBack />
+                          </MusicControlButton>
+                          {musicIsPlaying ? (
+                            <MusicControlButton
+                              className="play-pause"
+                              disabled={!musicTrackUrl}
+                              onClick={() => {
+                                const audio = musicAudioRef.current;
+                                const current = audio ? audio.currentTime : 0;
+                                setMusicIsPlaying(false);
+                                setMusicPosition(current);
+                                applyMusicStateToAudio(musicTrackUrl, false, current);
+                                sendMusicControl({
+                                  action: 'pause',
+                                  trackUrl: musicTrackUrl,
+                                  position: current,
+                                });
+                              }}
+                              title="Pause"
+                            >
+                              <FiSquare />
+                            </MusicControlButton>
+                          ) : (
+                            <MusicControlButton
+                              className="play-pause"
+                              disabled={!musicTrackUrl}
+                              onClick={() => {
+                                if (!musicTrackUrl) return;
+                                const audio = musicAudioRef.current;
+                                const current = audio ? audio.currentTime : 0;
+                                setMusicIsPlaying(true);
+                                setMusicPosition(current);
+                                applyMusicStateToAudio(musicTrackUrl, true, current);
+                                sendMusicControl({
+                                  action: 'play',
+                                  trackUrl: musicTrackUrl,
+                                  position: current,
+                                });
+                              }}
+                              title="Play"
+                            >
+                              <FiPlay />
+                            </MusicControlButton>
+                          )}
+                          <MusicControlButton
+                            disabled={!musicTrackUrl}
+                            onClick={() => {
+                              const audio = musicAudioRef.current;
+                              if (!audio) return;
+                              const nextPos = Math.min(audio.duration || audio.currentTime + 10, audio.currentTime + 10);
+                              setMusicPosition(nextPos);
+                              applyMusicStateToAudio(musicTrackUrl, musicIsPlaying, nextPos);
+                              sendMusicControl({
+                                action: 'seek',
+                                trackUrl: musicTrackUrl,
+                                position: nextPos,
+                              });
+                            }}
+                            title="Forward 10s"
+                          >
+                            <FiSkipForward />
+                          </MusicControlButton>
+                        </MusicControlsRow>
+                        {musicTrackLyrics && (
+                          <MusicLyricsSection>
+                            <MusicLyricsText>{musicTrackLyrics}</MusicLyricsText>
+                          </MusicLyricsSection>
+                        )}
+                      </MusicPlayerMain>
+                    )}
+                    <audio ref={musicAudioRef} style={{ display: 'none' }} />
+                  </MusicPlayerContainer>
+                )}
               </ChessArea>
             )}
             {funToken !== 1 && (
@@ -1763,9 +2514,9 @@ function AudioChat() {
                             <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
                               <FiVideo size={18} /> Watch Along
                             </FunMenuItem>
-                            <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
-                              <FiHeadphones size={18} /> Listen Along
-                            </FunMenuItem>
+                           <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                             <FiHeadphones size={18} /> Listen Along
+                           </FunMenuItem>
                             <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
                               <FiPlay size={18} /> Play Along
                             </FunMenuItem>
@@ -1839,7 +2590,7 @@ function AudioChat() {
                           <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
                             <FiVideo size={18} /> Watch Along
                           </FunMenuItem>
-                          <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                          <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
                             <FiHeadphones size={18} /> Listen Along
                           </FunMenuItem>
                           <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
