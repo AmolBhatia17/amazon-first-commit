@@ -1,7 +1,6 @@
 /**
- * Free STUN servers for WebRTC. Used one-at-a-time; if connection establishment
- * takes longer than ESTABLISHMENT_DELAY_THRESHOLD_MS, the next connection (e.g. after skip)
- * will try the next server in the list until a faster one is found.
+ * Free STUN servers for WebRTC. Multiple servers are used at once so ICE can
+ * gather more candidates and connect reliably (e.g. on mobile and across NATs).
  */
 export const ESTABLISHMENT_DELAY_THRESHOLD_MS = 2500;
 
@@ -25,13 +24,16 @@ export const STUN_SERVERS = [
   { urls: 'stun:stun.nextcloud.com:443' },
 ];
 
+/** Use multiple STUN servers at once for better connectivity (mobile, NAT, etc.) */
+const ICE_SERVERS_MULTI = STUN_SERVERS.slice(0, 6).map((s) => ({ urls: s.urls }));
+
 /**
- * @param {number} serverIndex - Current STUN server index (0-based). Rotate when establishment delay > threshold.
+ * @param {number} serverIndex - Optional rotation index (kept for API compatibility).
  * @returns {{ iceServers: Array<{ urls: string }> }}
  */
 export function getRtcConfig(serverIndex) {
-  const index = Math.abs(serverIndex) % STUN_SERVERS.length;
   return {
-    iceServers: [STUN_SERVERS[index]],
+    iceServers: ICE_SERVERS_MULTI,
+    iceCandidatePoolSize: 10,
   };
 }

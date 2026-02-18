@@ -2,7 +2,11 @@ class SocketService {
   constructor() {
     this.ws = null;
     this.token = null;
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+    // Use same origin when REACT_APP_API_URL is empty (production: API/WS via CloudFront)
+    const envUrl = process.env.REACT_APP_API_URL;
+    this.baseURL = (envUrl && envUrl.trim() !== '')
+      ? envUrl.replace(/\/$/, '')
+      : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080');
     this.handlers = new Map();
   }
 

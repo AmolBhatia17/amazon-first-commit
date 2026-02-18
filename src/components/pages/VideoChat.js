@@ -1753,6 +1753,11 @@ function VideoChat() {
           applyRemoteStream();
         };
         applyRemoteStream();
+        // Re-apply after a short delay when video track arrives (helps mobile / delayed frames)
+        if (track.kind === 'video') {
+          setTimeout(applyRemoteStream, 300);
+          setTimeout(applyRemoteStream, 800);
+        }
         setIsConnected(true);
         setIsWaiting(false);
         setShowRemoteBuffer(false);
@@ -1888,22 +1893,41 @@ function VideoChat() {
   };
 
   const applyRemoteStream = () => {
-    if (remoteStreamRef.current && remoteVideoRef.current) {
-      const video = remoteVideoRef.current;
-      if (video.srcObject !== remoteStreamRef.current) {
-        video.srcObject = remoteStreamRef.current;
-      }
-      video.muted = true;
-      video.volume = 1;
-      video.play?.().catch((err) => {
-        if (err?.name !== 'AbortError') {
-          console.error('Remote play error', err);
-        }
-      });
-      setTimeout(() => {
-        if (remoteVideoRef.current) remoteVideoRef.current.muted = false;
-      }, 200);
+    if (!remoteStreamRef.current || !remoteVideoRef.current) return;
+    const video = remoteVideoRef.current;
+    const stream = remoteStreamRef.current;
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
     }
+    // Mobile: start muted so play() is allowed by autoplay policy, then unmute
+    video.muted = true;
+    video.volume = 1;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    const playPromise = video.play?.();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((err) => {
+        if (err && err.name !== 'AbortError') console.error('Remote play error', err);
+      });
+    }
+    // Unmute after play has started (required on iOS/Safari and some Android)
+    const unmute = () => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.play?.().catch(() => {});
+      }
+    };
+    setTimeout(unmute, 400);
+    // Extra kick for mobile: re-apply and play on canplay
+    const onCanPlay = () => {
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject === stream) {
+        remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.play?.().catch(() => {});
+      }
+    };
+    video.removeEventListener('canplay', onCanPlay);
+    video.addEventListener('canplay', onCanPlay, { once: true });
   };
 
   const resetForRequeue = (message = '') => {
@@ -2369,12 +2393,17 @@ function VideoChat() {
 
   // Ensure remote video attaches when stream arrives or element mounts
   useEffect(() => {
+    if (!isConnected) return;
     applyRemoteStream();
     const videoElement = remoteVideoRef.current;
     if (videoElement) {
       const handler = () => applyRemoteStream();
       videoElement.addEventListener('loadedmetadata', handler);
-      return () => videoElement.removeEventListener('loadedmetadata', handler);
+      videoElement.addEventListener('loadeddata', handler);
+      return () => {
+        videoElement.removeEventListener('loadedmetadata', handler);
+        videoElement.removeEventListener('loadeddata', handler);
+      };
     }
   }, [isConnected]);
 
