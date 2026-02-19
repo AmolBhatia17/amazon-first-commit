@@ -2626,7 +2626,7 @@ function VideoChat() {
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                style={{ visibility: isConnected ? 'visible' : 'hidden' }}
+                style={{ visibility: isConnected ? 'visible' : 'hidden', transform: 'none' }}
               />
               {!isConnected && (
                 <VideoPlaceholder style={{ position: 'absolute', inset: 0 }}>
