@@ -3,10 +3,26 @@ class SocketService {
     this.ws = null;
     this.token = null;
     // Use same origin when REACT_APP_API_URL is empty (production: API/WS via CloudFront)
+    // For localhost development, use backend directly on port 8080
     const envUrl = process.env.REACT_APP_API_URL;
-    this.baseURL = (envUrl && envUrl.trim() !== '')
-      ? envUrl.replace(/\/$/, '')
-      : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080');
+    if (envUrl && envUrl.trim() !== '') {
+      this.baseURL = envUrl.replace(/\/$/, '');
+    } else if (typeof window !== 'undefined') {
+      // Check if we're on localhost (development)
+      const isLocalhost = window.location.hostname === 'localhost' || 
+                         window.location.hostname === '127.0.0.1' ||
+                         window.location.hostname === '';
+      if (isLocalhost) {
+        // Use backend directly for localhost development
+        this.baseURL = 'http://localhost:8080';
+      } else {
+        // Production: use same origin (CloudFront)
+        this.baseURL = window.location.origin;
+      }
+    } else {
+      // Server-side rendering fallback
+      this.baseURL = 'http://localhost:8080';
+    }
     this.handlers = new Map();
   }
 
