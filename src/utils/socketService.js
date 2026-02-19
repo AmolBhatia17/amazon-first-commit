@@ -59,7 +59,10 @@ class SocketService {
 
     const token = await this.getAuthToken();
     return new Promise((resolve, reject) => {
-      const wsUrl = `${this.baseURL.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(token)}`;
+      // Convert http/https to ws/wss for WebSocket URL
+      const wsUrl = this.baseURL.replace(/^https?:\/\//, (match) => {
+        return match === 'https://' ? 'wss://' : 'ws://';
+      }) + `/ws?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
       this.ws = ws;
 
