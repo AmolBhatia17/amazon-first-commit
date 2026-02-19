@@ -13,7 +13,10 @@ $backendUrl = "http://44.202.124.228:8080"
 
 # Step 1: Build React app
 Write-Host "Step 1: Building React application..." -ForegroundColor Yellow
-$env:REACT_APP_API_URL = $backendUrl
+# NOTE: Do NOT set REACT_APP_API_URL for CloudFront production builds
+# When REACT_APP_API_URL is empty, the app uses same origin (CloudFront) for API/WS
+# This allows CloudFront to route /api/* and /ws* to the backend
+# Set-Location $PSScriptRoot\..
 Set-Location $PSScriptRoot\..
 npm run build
 if ($LASTEXITCODE -ne 0) {
