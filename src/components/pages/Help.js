@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import Header from '../layout/Header';
-import Footer from '../layout/Footer';
 
 const Page = styled.div`
   height: 100vh;
@@ -19,7 +18,8 @@ const Container = styled.div`
   width: 100%;
   margin: 0 auto;
   padding: 90px 20px 40px;
-  height: calc(100vh - 140px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 `;
@@ -224,7 +224,6 @@ function Help() {
         </Form>
 
       </Container>
-      <Footer />
     </Page>
   );
 }

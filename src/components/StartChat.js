@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { FiMessageCircle, FiMic, FiVideo, FiArrowRight } from 'react-icons/fi';
 import Header from '../layout/Header';
-import Footer from '../layout/Footer';
 
 const StartChatContainer = styled.div`
   height: 100vh;
@@ -221,7 +220,6 @@ function StartChat() {
           </ChatOption>
         </OptionsContainer>
       </MainContent>
-      <Footer />
     </StartChatContainer>
   );
 }

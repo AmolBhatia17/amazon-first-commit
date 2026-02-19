@@ -14,6 +14,8 @@ const Page = styled.div`
   overflow-x: hidden;
   position: relative;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  display: flex;
+  flex-direction: column;
   
   &::before {
     content: '';
@@ -24,6 +26,15 @@ const Page = styled.div`
       radial-gradient(600px 300px at 50% 10%, rgba(29,185,84,0.05), rgba(0,0,0,0) 60%);
     pointer-events: none;
   }
+`;
+
+/* Grows with content; when short, flex pushes footer to bottom so no black gap */
+const Main = styled.main`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
 `;
 
 const TopNav = styled.nav`
@@ -408,6 +419,7 @@ function Homepage() {
       
       {bugOpen && <ReportBugModal onClose={() => setBugOpen(false)} />}
 
+      <Main>
       <Hero>
         <div>
           <Kicker>🔥 No identity. No small talk. Just vibes.</Kicker>
@@ -436,9 +448,17 @@ function Homepage() {
           <div style={{position:'absolute', top:76, left:24, right:24, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
             {[1,2,3,4].map(i => (
               <div key={i} style={{height:110, borderRadius:12, border:'1px solid rgba(255,255,255,.06)', overflow:'hidden', position:'relative', background:'#000'}}>
-                <div style={{width:'100%', height:'100%', objectFit:'cover', opacity:.85, filter:'saturate(1.05)', background:'linear-gradient(45deg, #1DB954, #19a64c)'}} />
+                {i === 1 ? (
+                  <img src="/image/win_1.png" alt="Room 1" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                ) : i === 2 ? (
+                  <img src="/image/win_2.png" alt="Room 2" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                ) : i === 3 ? (
+                  <img src="/image/win_3.jpg" alt="Room 3" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                ) : i === 4 ? (
+                  <img src="/image/win_4.png" alt="Room 4" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                ) : null}
                 <div style={{position:'absolute', inset:0, background:'linear-gradient(180deg, rgba(0,0,0,0) 20%, rgba(0,0,0,.65) 100%)'}} />
-                <div style={{position:'absolute', top:8, left:8, padding:'4px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.12)', background:'rgba(0,0,0,.55)', display:'inline-flex', alignItems:'center', gap:6, fontSize:12}}>
+                <div style={{position:'absolute', top:8, left:8, padding:'4px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.12)', background:'rgba(0,0,0,.55)', display:'inline-flex', alignItems:'center', gap:6, fontSize:12, zIndex:2}}>
                   <Dot />
                   <span>matching…</span>
                 </div>
@@ -519,6 +539,7 @@ function Homepage() {
           </CardText>
         </Card>
       </FeatureGrid>
+      </Main>
       <Footer />
       
       {/* Mobile Report Bug Button */}

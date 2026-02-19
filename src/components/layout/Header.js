@@ -5,9 +5,8 @@ import UniversalHamburger from '../ui/UniversalHamburger';
 import ReportBugModal from '../ui/ReportBugModal';
 
 const HeaderContainer = styled.div`
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: #000000 !important;
+  background-color: #000000 !important;
   position: fixed;
   top: 0;
   left: 0;
@@ -19,6 +18,7 @@ const HeaderContainer = styled.div`
   display: flex;
   align-items: center;
   width: ${props => props.$hasSidebar ? 'calc(100vw - 60px)' : '100vw'};
+  opacity: 1 !important;
   
   @media (max-width: 768px) {
     padding: 0 1rem;
@@ -143,7 +143,7 @@ function Header({
   const [bugOpen, setBugOpen] = useState(false);
 
   return (
-    <HeaderContainer $hasSidebar={hasSidebar}>
+    <HeaderContainer $hasSidebar={hasSidebar} style={{ background: '#000', backgroundColor: '#000' }}>
       <HeaderFlex>
         <Logo to="/">
           <img src="/assets/logos/logo.png" alt="Unitalks Logo" />

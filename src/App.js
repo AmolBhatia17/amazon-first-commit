@@ -18,25 +18,27 @@ const AppBackground = styled.div`
   background: ${props => props.theme.colors.appBg};
   display: flex;
   flex-direction: column;
-  overflow: ${props => props.$isHomepage ? 'auto' : 'hidden'};
+  overflow: hidden;
 `;
 
 const MainContent = styled.main`
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   width: 100%;
-  overflow: ${props => props.$isHomepage ? 'visible' : 'hidden'};
+  overflow-y: ${props => props.$isScrollableRoute ? 'auto' : 'hidden'};
+  overflow-x: hidden;
 `;
 
-// Component to determine if we're on homepage
+// Routes that use full-page scroll with footer at end (homepage, start-chat)
 function AppContent() {
   const location = useLocation();
-  const isHomepage = location.pathname === '/';
+  const isScrollableRoute = location.pathname === '/' || location.pathname === '/start-chat';
 
   return (
-    <AppBackground $isHomepage={isHomepage}>
-      <MainContent $isHomepage={isHomepage}>
+    <AppBackground>
+      <MainContent $isScrollableRoute={isScrollableRoute}>
             <Routes>
               <Route path="/" element={<Homepage />} />
               <Route path="/start-chat" element={<StartChat />} />

@@ -3,7 +3,6 @@ import styled, { keyframes } from 'styled-components';
 import { Link } from 'react-router-dom';
 import { FiTool, FiArrowLeft, FiClock, FiZap } from 'react-icons/fi';
 import Header from '../layout/Header';
-import Footer from '../layout/Footer';
 
 const MaintenanceContainer = styled.div`
   height: 100vh;
@@ -19,7 +18,8 @@ const MaintenanceContainer = styled.div`
 `;
 
 const MainContent = styled.div`
-  height: calc(100vh - 64px);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -275,7 +275,6 @@ function MaintenancePage({ chatType = 'chat' }) {
           Back to Chat Options
         </BackButton>
       </MainContent>
-      <Footer />
     </MaintenanceContainer>
   );
 }

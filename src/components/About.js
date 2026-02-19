@@ -1,7 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
 import Header from '../layout/Header';
-import Footer from '../layout/Footer';
 
 const AboutContainer = styled.div`
   height: 100vh;
@@ -21,7 +20,8 @@ const AboutContent = styled.div`
   margin: 0 auto;
   padding: 90px 20px 40px;
   line-height: 1.7;
-  height: calc(100vh - 140px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 `;
@@ -388,8 +388,6 @@ function About() {
           </MissionText>
         </MissionSection>
       </AboutContent>
-      
-      <Footer />
     </AboutContainer>
   );
 }

@@ -1,24 +1,34 @@
 import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 
+/* Outside area: transparent + blur so background shows through */
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: #000;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: grid;
   place-items: center;
-  z-index: 2000;
+  z-index: 99999;
 `;
 
+/* Form box: totally solid black - forced so no parent can make it transparent */
 const Card = styled.div`
   width: 92%;
   max-width: 560px;
-  background: #121212;
-  border: 1px solid rgba(255,255,255,0.08);
+  background: #000000 !important;
+  background-color: #000000 !important;
+  opacity: 1 !important;
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 16px;
   padding: 1.25rem;
   color: #e5e7eb;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  isolation: isolate;
+  position: relative;
+  z-index: 100000;
 `;
 
 const Title = styled.h3`
@@ -50,9 +60,11 @@ const Input = styled.input`
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.12);
-  background: #000;
+  background: #0a0a0a !important;
+  background-color: #0a0a0a !important;
   color: #fff;
   outline: none;
+  box-sizing: border-box;
 `;
 
 const Textarea = styled.textarea`
@@ -60,11 +72,13 @@ const Textarea = styled.textarea`
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.12);
-  background: #000;
+  background: #0a0a0a !important;
+  background-color: #0a0a0a !important;
   color: #fff;
   outline: none;
   min-height: 90px;
   resize: vertical;
+  box-sizing: border-box;
 `;
 
 const Actions = styled.div`
@@ -154,9 +168,9 @@ const ReportBugModal = ({ onClose }) => {
     }
   };
 
-  return (
+  const modalContent = (
     <Overlay onClick={onClose}>
-      <Card onClick={(e) => e.stopPropagation()}>
+      <Card onClick={(e) => e.stopPropagation()} style={{ background: '#000', opacity: 1 }}>
         <Title>Report a Bug / Request a Feature</Title>
         <Desc>Help us improve. Tell us where you saw the issue and what happened.</Desc>
 
@@ -194,6 +208,10 @@ const ReportBugModal = ({ onClose }) => {
       </Card>
     </Overlay>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };
 
 export default ReportBugModal;
