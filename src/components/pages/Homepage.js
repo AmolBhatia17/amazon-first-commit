@@ -261,7 +261,7 @@ const TickerContainer = styled.div`
   pointer-events: none; /* allow clicks through except for explicit buttons */
   
   @media (max-width: 768px) {
-    bottom: 40px;
+    display: none; /* hide ticker on mobile */
   }
 `;
 
