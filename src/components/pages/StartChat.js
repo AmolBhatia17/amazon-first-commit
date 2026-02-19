@@ -1,13 +1,10 @@
 import React from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { FiMessageCircle, FiMic, FiVideo, FiArrowRight } from 'react-icons/fi';
 import Header from '../layout/Header';
 
-const glow = keyframes`
-  0%, 100% { box-shadow: 0 0 20px rgba(29,185,84,0.25), 0 0 40px rgba(29,185,84,0.1); }
-  50% { box-shadow: 0 0 30px rgba(29,185,84,0.4), 0 0 60px rgba(29,185,84,0.15); }
-`;
+// Removed glow animation to fix flickering issue on mobile
 
 const StartChatContainer = styled.div`
   min-height: 100vh;
@@ -134,8 +131,7 @@ const ChatOption = styled(Link)`
   transition: all 0.25s ease;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-  animation: ${glow} 4s ease-in-out infinite;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 0 20px rgba(29,185,84,0.15);
   backdrop-filter: blur(12px);
 
   &::before {
