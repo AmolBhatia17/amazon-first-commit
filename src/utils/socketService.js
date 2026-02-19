@@ -23,6 +23,14 @@ class SocketService {
       // Server-side rendering fallback
       this.baseURL = 'http://localhost:8080';
     }
+    
+    // Log the baseURL being used (helpful for debugging)
+    if (typeof window !== 'undefined') {
+      console.log('[socketService] Initialized with baseURL:', this.baseURL);
+      console.log('[socketService] Current hostname:', window.location.hostname);
+      console.log('[socketService] Current origin:', window.location.origin);
+    }
+    
     this.handlers = new Map();
   }
 
@@ -63,19 +71,36 @@ class SocketService {
       const wsUrl = this.baseURL.replace(/^https?:\/\//, (match) => {
         return match === 'https://' ? 'wss://' : 'ws://';
       }) + `/ws?token=${encodeURIComponent(token)}`;
+      
+      console.log('[socketService] Connecting to:', wsUrl);
       const ws = new WebSocket(wsUrl);
       this.ws = ws;
 
+      // Set timeout for connection (10 seconds)
+      const timeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.error('[socketService] Connection timeout');
+          ws.close();
+          reject(new Error('WebSocket connection timeout'));
+        }
+      }, 10000);
+
       ws.onopen = () => {
+        clearTimeout(timeout);
+        console.log('[socketService] Connected successfully');
         resolve(ws);
       };
 
       ws.onerror = (err) => {
-        console.error('Socket connect_error:', err?.message || err);
+        clearTimeout(timeout);
+        console.error('[socketService] Connection error:', err?.message || err);
+        console.error('[socketService] WebSocket URL was:', wsUrl);
         reject(err);
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        clearTimeout(timeout);
+        console.log('[socketService] Connection closed:', event.code, event.reason);
         this.ws = null;
       };
 
