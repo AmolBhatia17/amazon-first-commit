@@ -275,7 +275,7 @@ const TickerTrack = styled.div`
   z-index: 2;
   
   @media (max-width: 768px) {
-    animation: ${ticker} 20s linear infinite; /* slower on mobile */
+    animation: ${ticker} 35s linear infinite; /* much slower on mobile */
   }
 `;
 
