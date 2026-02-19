@@ -143,13 +143,12 @@ const PrimaryLink = styled(Link)`
   ${({ $hero }) => $hero && `
     font-size: 2rem;
     padding: 24px 44px;
-    animation: glowPulse 2.8s ease-in-out infinite;
+    box-shadow: 0 0 0 2px rgba(29,185,84,.25), 0 12px 28px rgba(29,185,84,.25);
+    @media (max-width: 768px) {
+      font-size: 1.5rem;
+      padding: 18px 32px;
+    }
   `}
-  @keyframes glowPulse {
-    0% { box-shadow: 0 0 0 2px rgba(29,185,84,.25), 0 12px 28px rgba(29,185,84,.25); }
-    50% { box-shadow: 0 0 0 8px rgba(29,185,84,.05), 0 18px 40px rgba(29,185,84,.35); }
-    100% { box-shadow: 0 0 0 2px rgba(29,185,84,.25), 0 12px 28px rgba(29,185,84,.25); }
-  }
 `;
 
 const float = keyframes`
@@ -274,6 +273,10 @@ const TickerTrack = styled.div`
   animation: ${ticker} 12s linear infinite; /* start immediately and move faster */
   position: relative;
   z-index: 2;
+  
+  @media (max-width: 768px) {
+    animation: ${ticker} 20s linear infinite; /* slower on mobile */
+  }
 `;
 
 const TickerText = styled.span`
@@ -449,13 +452,25 @@ function Homepage() {
             {[1,2,3,4].map(i => (
               <div key={i} style={{height:110, borderRadius:12, border:'1px solid rgba(255,255,255,.06)', overflow:'hidden', position:'relative', background:'#000'}}>
                 {i === 1 ? (
-                  <img src="/image/win_1.png" alt="Room 1" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                  <picture>
+                    <source srcSet="/image/win_1.webp" type="image/webp" />
+                    <img src="/image/win_1.png" alt="Room 1" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
+                  </picture>
                 ) : i === 2 ? (
-                  <img src="/image/win_2.png" alt="Room 2" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                  <picture>
+                    <source srcSet="/image/win_2.webp" type="image/webp" />
+                    <img src="/image/win_2.png" alt="Room 2" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
+                  </picture>
                 ) : i === 3 ? (
-                  <img src="/image/win_3.jpg" alt="Room 3" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                  <picture>
+                    <source srcSet="/image/win_3.webp" type="image/webp" />
+                    <img src="/image/win_3.jpg" alt="Room 3" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
+                  </picture>
                 ) : i === 4 ? (
-                  <img src="/image/win_4.png" alt="Room 4" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} />
+                  <picture>
+                    <source srcSet="/image/win_4.webp" type="image/webp" />
+                    <img src="/image/win_4.png" alt="Room 4" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
+                  </picture>
                 ) : null}
                 <div style={{position:'absolute', inset:0, background:'linear-gradient(180deg, rgba(0,0,0,0) 20%, rgba(0,0,0,.65) 100%)'}} />
                 <div style={{position:'absolute', top:8, left:8, padding:'4px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.12)', background:'rgba(0,0,0,.55)', display:'inline-flex', alignItems:'center', gap:6, fontSize:12, zIndex:2}}>
