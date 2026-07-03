@@ -6,6 +6,10 @@
 
 <br>
 
+🌐 **[Live Demo Deployment (Netlify)](https://unitalks-live.netlify.app/)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://www.youtube.com/watch?v=LDV3IZyBd_I)** *(formerly ideated as Gingr)*
+
+<br>
+
 <img src="./docs/images/hero_banner.png" alt="UniTalks Banner" width="600"/>
 
 <br><br>
@@ -14,8 +18,6 @@
 [![WebRTC](https://img.shields.io/badge/WebRTC-Simple--Peer-orange?style=for-the-badge&logo=webrtc&logoColor=white)](https://webrtc.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![Node.js](https://img.shields.io/badge/Node.js-Express-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Live Site](https://img.shields.io/badge/Deployment-Live%20Demo-22C55E?style=for-the-badge)](https://unitalks-live.netlify.app/)
-[![Demo Video](https://img.shields.io/badge/MVP%20Demo-YouTube-FF0000?style=for-the-badge)](https://www.youtube.com/watch?v=LDV3IZyBd_I)
 
 <br>
 
