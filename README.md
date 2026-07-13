@@ -6,7 +6,7 @@
 
 <br>
 
-🌐 **[Live Demo Deployment (Netlify)](https://unitalks-live.netlify.app/)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://www.youtube.com/watch?v=LDV3IZyBd_I)** *(formerly ideated as Gingr)*
+🌐 **[Live Demo Deployment (Vercel)](https://unitalks-video-chat-1-ckkv43kzj.vercel.app)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://www.youtube.com/watch?v=LDV3IZyBd_I)** *(formerly ideated as Gingr)*
 
 <br>
 
@@ -252,7 +252,7 @@ UniTalks operates an offline-first signaling sequence with zero storage logs. Th
 - **Identity & Security**: JSON Web Tokens (JWT) & UUID - Secure session generation.
 
 ### Hosting & Infrastructure
-- **Client**: Netlify (CI/CD connected to main branch).
+- **Client**: Vercel (CI/CD connected to main branch).
 - **Backend API**: Containerized via Docker / AWS Cloudfront deployments.
 
 ---
