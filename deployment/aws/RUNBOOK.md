@@ -35,6 +35,21 @@ Region is **us-east-1** everywhere — CloudFront only accepts an ACM cert from 
 
 ## Phase 0 — Prerequisites
 
+### 0.0 CloudFront account verification — do this FIRST, it has a lead time
+
+A new AWS account cannot create CloudFront distributions until Support enables it:
+
+```
+AccessDenied: Your account must be verified before you can add new CloudFront
+resources. To verify your account, please contact AWS Support.
+```
+
+Nothing in Phases 1–9 is affected, but Phase 10 is a hard stop until it clears, so raise
+the case before you start. Console → Support → **Create case** → *Account and billing* →
+Service **CloudFront**, Category *General guidance* — ask them to enable CloudFront
+distribution creation. This is free on Basic support; the Support **API** is not (it
+returns `SubscriptionRequiredException`), so it must be done in the console.
+
 ### 0.1 Create the deploy credentials (you, in the browser)
 
 IAM → Users → your user → Security credentials → **Create access key** → *Command Line Interface*.
@@ -166,13 +181,36 @@ aws ecr create-repository --repository-name $ECR_REPO `
   --image-scanning-configuration scanOnPush=true `
   --query 'repository.repositoryUri' --output text
 
-aws ecr get-login-password --region $REGION |
-  docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
-
 docker build --platform linux/amd64 -t "${ECR_REPO}:latest" .\server
 docker tag "${ECR_REPO}:latest" $IMAGE
-docker push $IMAGE
 ```
+
+**Do not use `aws ecr get-login-password | docker login --password-stdin` here.** Piping the
+~1770-character token through a PowerShell 5.1 pipe mangles it and the registry answers
+`400 Bad Request`, even though the token itself is valid (a direct Basic-auth REST probe
+against `/v2/` returns 200). PowerShell 5.1 also has no `<` stdin redirection to work
+around it with. Write the auth into a throwaway Docker config instead — this also avoids
+Docker Desktop's `credsStore` swallowing the entry, and leaves your real
+`~/.docker/config.json` untouched:
+
+```powershell
+$REG = "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
+$cfgDir = Join-Path $env:TEMP "ut-docker-cfg"
+New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
+
+$pw = aws ecr get-login-password --region $REGION
+$auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("AWS:$pw"))
+[IO.File]::WriteAllText((Join-Path $cfgDir "config.json"),
+  (@{ auths = @{ $REG = @{ auth = $auth } } } | ConvertTo-Json -Depth 6))
+
+docker --config $cfgDir push $IMAGE
+Remove-Item -Recurse -Force $cfgDir
+```
+
+Docker Desktop must actually be running first — if `docker build` reports
+`failed to connect to the docker API at npipe:////./pipe/docker_engine`, start
+`"C:\Program Files\Docker\Docker\Docker Desktop.exe"` and wait for
+`docker info` to succeed.
 
 ---
 
@@ -305,13 +343,25 @@ $TURN_IP = aws ec2 describe-addresses --allocation-ids $EIP_TURN `
 ```
 
 > coturn advertises its own public IP, read from instance metadata **at container start**.
-> Because the Elastic IP is attached after boot, restart the bootstrap once so it picks up
+> Because the Elastic IP is attached after boot, rebuild the container once so it picks up
 > the final address:
 >
 > ```powershell
 > aws ssm send-command --instance-ids $EC2_TURN `
 >   --document-name AWS-RunShellScript `
->   --parameters 'commands=["bash /var/lib/cloud/instance/scripts/part-001"]'
+>   --parameters 'commands=["/usr/local/bin/coturn-redeploy"]'
+> ```
+>
+> **Passing multi-line scripts to `send-command`:** the `commands=[...]` shorthand is
+> word-split by the CLI and silently corrupts anything containing spaces, `{{ }}` or `;`
+> (`Unknown options: {{.Status}};echo ...`). For more than one trivial command, write a
+> JSON file and pass `--parameters file://...`:
+>
+> ```powershell
+> [IO.File]::WriteAllText("$env:TEMP\ssm.json",
+>   (@{ commands = @('docker ps', 'docker logs coturn --tail 20') } | ConvertTo-Json -Depth 5))
+> aws ssm send-command --instance-ids $EC2_TURN `
+>   --document-name AWS-RunShellScript --parameters "file://$env:TEMP\ssm.json"
 > ```
 
 ---
