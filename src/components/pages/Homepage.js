@@ -263,7 +263,12 @@ const TickerContainer = styled.div`
 const TickerTrack = styled.div`
   display: flex;
   width: max-content;
-  animation: ${scroll} 32s linear infinite;
+  animation: ${scroll} 45s linear infinite;
+
+  /* The track is a fixed pixel width, so on a narrow screen the same
+     duration reads as a much faster sweep. Slow it right down on mobile. */
+  @media (max-width: 768px) { animation-duration: 75s; }
+  @media (max-width: 480px) { animation-duration: 95s; }
 
   @media (prefers-reduced-motion: reduce) { animation: none; }
 `;

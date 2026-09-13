@@ -12,34 +12,50 @@ import VideoChat from './components/pages/VideoChat';
 import AudioChat from './components/pages/AudioChat';
 import TextChat from './components/pages/TextChat';
 
+/**
+ * Chat routes are pinned to the viewport (their message lists scroll
+ * internally). Long-form routes scroll the *document* instead of an inner
+ * box — native page scroll keeps momentum and the mobile URL bar behaving,
+ * which an inner `overflow: auto` container does not.
+ */
 const AppBackground = styled.div`
-  height: 100vh;
   width: 100%;
   background: ${({ theme, $dark }) => ($dark ? theme.colors.ink : theme.colors.sun)};
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+
+  ${({ $scrollable }) => $scrollable
+    ? 'min-height: 100vh;'
+    : 'height: 100vh; overflow: hidden;'}
 `;
 
 const MainContent = styled.main`
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   width: 100%;
-  overflow-y: ${props => props.$isScrollableRoute ? 'auto' : 'hidden'};
   overflow-x: hidden;
+
+  ${({ $isScrollableRoute }) => $isScrollableRoute
+    ? 'flex: 1 0 auto;'
+    : 'flex: 1; min-height: 0; overflow-y: hidden;'}
 `;
 
-// Routes that use full-page scroll with footer at end (homepage, start-chat)
+// Only the three chat modes are locked to the viewport (their message lists
+// scroll internally). Every other route is long-form and scrolls the page.
+const FIXED_HEIGHT_ROUTES = ['/text', '/voice', '/video'];
+
 function AppContent() {
   const location = useLocation();
-  const isScrollableRoute = location.pathname === '/' || location.pathname === '/start-chat';
+  const isScrollableRoute = !FIXED_HEIGHT_ROUTES.includes(location.pathname);
   // Video and voice sit on the dark ink canvas; everything else on amber paper.
   const isDarkRoute = location.pathname === '/video' || location.pathname === '/voice';
 
   return (
-    <AppBackground $dark={isDarkRoute} className={isDarkRoute ? 'bg-graph-grid-dark' : 'bg-graph-grid'}>
+    <AppBackground
+      $dark={isDarkRoute}
+      $scrollable={isScrollableRoute}
+      className={isDarkRoute ? 'bg-graph-grid-dark' : 'bg-graph-grid'}
+    >
       <MainContent $isScrollableRoute={isScrollableRoute}>
             <Routes>
               <Route path="/" element={<Homepage />} />

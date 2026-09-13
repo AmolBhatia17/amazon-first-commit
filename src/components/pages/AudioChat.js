@@ -110,14 +110,19 @@ const AudioFeed = styled.div`
     > div:first-child svg { font-size: 26px; }
 
     @media (max-width: 900px) {
-      right: 12px;
-      bottom: 78px;
-      > div:first-child { width: 82px; height: 82px; }
-      > div:first-child svg { font-size: 21px; }
+      right: 10px;
+      top: 12px;
+      bottom: auto;
+      gap: 6px;
+      > div:first-child { width: 68px; height: 68px; border-width: 3px; font-size: 10px; }
+      > div:first-child svg { font-size: 18px; }
     }
   ` : `
     width: 100%;
     padding: 20px;
+
+    /* Clear the floating control bar pinned to the bottom of the stage. */
+    @media (max-width: 900px) { padding-bottom: 96px; }
   `}
 `;
 
@@ -1953,6 +1958,7 @@ function AudioChat() {
               >
                 {audioEnabled ? <FiMic /> : <FiMicOff />}
               </AudioOverlayButton>
+            </AudioFeed>
               <MobileAudioControls>
                 <MobileControlButton
                   onClick={skipPartner}
@@ -1982,7 +1988,6 @@ function AudioChat() {
                   </MobileControlButton>
                 )}
               </MobileAudioControls>
-            </AudioFeed>
           </AudioFeedsContainer>
             <BottomControlsSection>
               <ChatControls>

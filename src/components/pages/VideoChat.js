@@ -98,16 +98,20 @@ const VideoFeed = styled.div`
     border-radius: ${theme.radii.panel};
   `}
 
+  /* Mobile: the self-view moves to the top-right so the bottom band belongs
+     entirely to the floating control bar. */
   @media (max-width: 900px) {
-    ${({ $isRemote, theme }) => $isRemote ? `
+    ${({ $isRemote }) => $isRemote ? `
       border: none;
       border-radius: 0;
     ` : `
-      right: 12px;
-      bottom: 78px;
-      width: 108px;
-      height: 148px;
-      border-radius: 16px;
+      right: 10px;
+      top: 12px;
+      bottom: auto;
+      width: 86px;
+      height: 116px;
+      border-width: 2px;
+      border-radius: 14px;
     `}
   }
 `;
@@ -2227,7 +2231,7 @@ function VideoChat() {
                       disabled={!isStarted || (isWaiting && !isConnected)}
                       style={{ opacity: isStarted && (!isWaiting || isConnected) ? 1 : 0.5, cursor: isStarted && (!isWaiting || isConnected) ? 'pointer' : 'not-allowed' }}
                     >
-                      <FiSend />
+                      <FiSkipForward />
                     </MobileControlButton>
                   </>
                 ))}
@@ -2597,45 +2601,6 @@ function VideoChat() {
                      </ReplyPreview>
                    )}
                    <InputRow>
-                     {isStarted && (
-                       <MobileFunWrap>
-                         <FunMenuWrap ref={funMenuMobileRef}>
-                           {funToken === 1 ? (
-                             <FunButtonSmall onClick={exitFun} title="Exit fun game" style={{ borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
-                               EXIT FUN
-                             </FunButtonSmall>
-                           ) : (
-                             <>
-                           <FunButtonSmall
-                             disabled={isWaiting && !isConnected}
-                             onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); }}
-                             title="Fun features"
-                           >
-                             <ButtonIcon><FiZap /></ButtonIcon>
-                             Fun
-                           </FunButtonSmall>
-                           {showFunMenu && (
-                             <FunMenuPopover>
-                               <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
-                                 <FiVideo size={18} /> Watch Along
-                               </FunMenuItem>
-                              <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
-                                <FiHeadphones size={18} /> Listen Along
-                              </FunMenuItem>
-                               <FunMenuItem>
-                                 <FiPlay size={18} /> Play Along
-                               </FunMenuItem>
-                               <FunSubmenu>
-                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>Chess</FunMenuItem>
-                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>Truth and Dare</FunMenuItem>
-                               </FunSubmenu>
-                             </FunMenuPopover>
-                           )}
-                             </>
-                           )}
-                         </FunMenuWrap>
-                       </MobileFunWrap>
-                     )}
                      <MessageInput
                        type="text"
                        placeholder={replyingTo ? "Type your reply..." : "Type a message..."}
