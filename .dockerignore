@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+build
+**/build
+server/dist
+.git
+.gitignore
+docs
+deployment
+npm-debug.log*
+*.log
+.env
+**/.env
+cloudfront-*.json

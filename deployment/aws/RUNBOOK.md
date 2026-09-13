@@ -1,522 +1,338 @@
 # UniTalks — AWS Deployment Runbook
 
-Target architecture:
+**Deployed architecture** (as of 2026-09-14, account `037063405946`, us-east-1):
 
 ```
-unitalks.in ──► Route 53 ──► CloudFront ──┬─ default ──► S3 (React build, private + OAC)
-                                          ├─ /api/*  ──► EC2 #1  (Node signaling, Docker, :80→:8080)
-                                          └─ /ws*    ──► EC2 #1
-turn.unitalks.in ─────────────────────────► EC2 #2  (coturn, 3478 TCP/UDP)
+https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com
+        │
+        └─► Lightsail Container Service "unitalks" (nano, scale 1)
+              └─ one container, image from ECR repo `unitalks`
+                   ├─ React build served by Express  (GET /, /static/*, SPA fallback)
+                   ├─ REST API                        (/health, /api/auth/token, /api/turn)
+                   └─ WebSocket signaling             (/ws)
+
+turn:13.219.31.203:3478  ──► EC2 t3.micro "unitalks-coturn" (Elastic IP, coturn 4.18.0)
 ```
 
-Region is **us-east-1** everywhere — CloudFront only accepts an ACM cert from that region.
+Everything is served from **one origin**, so there is no CORS, no mixed content, and no
+custom domain or certificate to manage — Lightsail terminates TLS on its own
+`*.cs.amazonlightsail.com` hostname.
 
-> **Run everything from one PowerShell window** in the repo root. The `$VARS` below live in
-> that session; if you close it you lose them and have to look the IDs back up.
->
-> **Three gotchas on this machine already worked around below — don't "simplify" them:**
-> 1. `Set-Content -Encoding utf8` writes a UTF-8 **BOM**, and AWS CLI rejects BOM'd JSON with
->    `Error parsing parameter: Expected: '=', received: '﻿'`. Every JSON file here is
->    written with `[IO.File]::WriteAllText(...)`, which omits the BOM.
-> 2. `ConvertTo-Json -AsArray` does not exist in PowerShell 5.1 — arrays are built by hand.
-> 3. **`C:\Windows\System32\cmd.exe` is missing on this machine** (only the 32-bit copy in
->    `SysWOW64` survives), so `npm` cannot spawn a shell and every `npm ci` / `npm run build`
->    dies with `npm error enoent spawn C:\WINDOWS\system32\cmd.exe`. Run this **once per
->    PowerShell session** before any npm command:
->
->    ```powershell
->    $env:ComSpec = "C:\Windows\SysWOW64\cmd.exe"
->    ```
->
->    Worth repairing properly at some point — `sfc /scannow` from an elevated prompt, or
->    check whether antivirus quarantined it.
+## Why this shape and not CloudFront + S3
 
----
-
-## Phase 0 — Prerequisites
-
-### 0.0 CloudFront account verification — do this FIRST, it has a lead time
-
-A new AWS account cannot create CloudFront distributions until Support enables it:
+The original design was CloudFront (HTTPS + CDN) in front of S3 for the frontend and an
+EC2 box for signaling. It is built out in the appendix and the template files are still
+here, but it is **not deployable on this account**:
 
 ```
 AccessDenied: Your account must be verified before you can add new CloudFront
 resources. To verify your account, please contact AWS Support.
 ```
 
-Nothing in Phases 1–9 is affected, but Phase 10 is a hard stop until it clears, so raise
-the case before you start. Console → Support → **Create case** → *Account and billing* →
-Service **CloudFront**, Category *General guidance* — ask them to enable CloudFront
-distribution creation. This is free on Basic support; the Support **API** is not (it
-returns `SubscriptionRequiredException`), so it must be done in the console.
+New AWS accounts are gated on CloudFront until Support enables it, which needs a console
+support case (the Support *API* requires a paid plan — `SubscriptionRequiredException`).
+Attaching the `unitalks.in` domain additionally needs the nameservers moved at Hostinger
+before ACM can validate. Both are manual steps outside AWS's API, so the deployment
+switched to Lightsail, which hands out a working HTTPS hostname with no gate and supports
+WebSockets. App Runner was also blocked (`SubscriptionRequiredException`); Amplify is
+available but cannot proxy WebSockets to a container.
 
-### 0.1 Create the deploy credentials (you, in the browser)
+The Route 53 zone, ACM certificate, S3 bucket, backend EC2 and its Elastic IP were all
+deleted once this was live — see *Teardown of the old path* below.
 
-IAM → Users → your user → Security credentials → **Create access key** → *Command Line Interface*.
-Attach **AdministratorAccess** to that user, or the narrower set:
-`AmazonS3FullAccess`, `CloudFrontFullAccess`, `AmazonEC2FullAccess`,
-`AmazonEC2ContainerRegistryFullAccess`, `AWSCertificateManagerFullAccess`,
-`AmazonRoute53FullAccess`, `AmazonSSMFullAccess`, plus `iam:CreateRole`, `iam:PassRole`,
-`iam:AttachRolePolicy`, `iam:PutRolePolicy`, `iam:CreateInstanceProfile`.
+---
 
-### 0.2 Configure the CLI
+## Constraints that shape the deployment
 
-```powershell
-aws configure --profile unitalks
-# AWS Access Key ID:     <paste>
-# AWS Secret Access Key: <paste>
-# Default region name:   us-east-1
-# Default output format: json
-```
+- **Scale must stay 1.** `server/src/services/stateManager.ts:5-7` holds users, sessions
+  and match queues in in-process `Map`s. A second container would split the matchmaking
+  pool and users on different instances could never be paired. Scaling out requires moving
+  that state into Redis/ElastiCache first.
+- **`TURN_HOST` is a raw IP**, because there is no DNS zone. It is pinned to the coturn
+  Elastic IP; if that IP ever changes, both the coturn container and the Lightsail
+  deployment must be updated.
+- **coturn has no TLS listener.** UDP/TCP 3478 covers the usual symmetric-NAT case, but
+  networks that only allow outbound 443 will not relay. TURNS needs a real hostname and
+  certificate, which needs the domain.
 
-### 0.3 Activate and confirm
+---
+
+## Prerequisites on this machine
 
 ```powershell
 $env:AWS_PROFILE = "unitalks"
 $env:AWS_DEFAULT_REGION = "us-east-1"
-aws sts get-caller-identity
+$env:ComSpec = "C:\Windows\SysWOW64\cmd.exe"   # see gotcha 3
 ```
 
-### 0.4 Session variables
+> **Four gotchas already worked around below — don't "simplify" them:**
+>
+> 1. **`Set-Content -Encoding utf8` writes a UTF-8 BOM**, and AWS CLI rejects BOM'd JSON
+>    with `Error parsing parameter: Expected: '=', received: '﻿'`. Every JSON payload here
+>    is written with `[IO.File]::WriteAllText(...)`, which omits the BOM. (This is what
+>    corrupted the old `cloudfront-current-config.json` into UTF-16.)
+> 2. **`ConvertTo-Json -AsArray` does not exist in PowerShell 5.1** — arrays are built by
+>    hand as `"[" + ($x | ConvertTo-Json -Compress) + "]"`.
+> 3. **`C:\Windows\System32\cmd.exe` is missing on this machine** (only the 32-bit copy in
+>    `SysWOW64` survives), so npm cannot spawn a shell and every `npm ci` / `npm run build`
+>    dies with `npm error enoent spawn C:\WINDOWS\system32\cmd.exe`. Set `$env:ComSpec` as
+>    above, once per session. Worth repairing properly — `sfc /scannow` from an elevated
+>    prompt, or check whether antivirus quarantined it.
+> 4. **`aws ecr get-login-password | docker login --password-stdin` does not work here.**
+>    Piping the ~1770-character token through a PowerShell 5.1 pipe corrupts it and the
+>    registry answers `400 Bad Request`, even though the token is valid (a direct
+>    Basic-auth REST probe of `/v2/` returns 200), and 5.1 has no `<` stdin redirection to
+>    work around it. Use the isolated-config helper in Step 2.
 
-```powershell
-$ACCOUNT  = (aws sts get-caller-identity --query Account --output text)
-$REGION   = "us-east-1"
-$DOMAIN   = "unitalks.in"
-$BUCKET   = "unitalks-frontend-$ACCOUNT"
-$ECR_REPO = "unitalks-backend"
-$IMAGE    = "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/${ECR_REPO}:latest"
-"ACCOUNT=$ACCOUNT  BUCKET=$BUCKET  IMAGE=$IMAGE"
-```
+Docker Desktop must be running. If `docker build` reports
+`failed to connect to the docker API at npipe:////./pipe/docker_engine`, start
+`"C:\Program Files\Docker\Docker\Docker Desktop.exe"` and wait for `docker info` to succeed.
 
 ---
 
-## Phase 1 — Route 53 hosted zone
+## Redeploying the app (the routine path)
+
+### Step 1 — build the all-in-one image
+
+`Dockerfile` at the repo root builds the frontend and backend in separate stages and ships
+them in one runtime image. Nothing else is needed; the React build is baked in.
 
 ```powershell
-$ZONE_ID = (aws route53 create-hosted-zone `
-  --name $DOMAIN `
-  --caller-reference "unitalks-$(Get-Date -Format yyyyMMddHHmmss)" `
-  --query 'HostedZone.Id' --output text).Split('/')[-1]
-$ZONE_ID
-
-# The four nameservers to paste into Hostinger:
-aws route53 get-hosted-zone --id $ZONE_ID --query 'DelegationSet.NameServers' --output text
+cd D:\Unitalks\UniTalks-WebRTC-Video-Chat
+docker build -t unitalks:latest .
 ```
 
-**YOUR ACTION:** Hostinger → Domains → `unitalks.in` → *DNS / Nameservers* → **Change
-nameservers** → *Use custom nameservers* → paste all four. Propagation is 1–24 h.
+The frontend stage installs with `npm ci --omit=dev` on purpose: it skips `sharp`, which is
+only used by an offline image script and has no prebuilt musl binary, while `react-scripts`
+stays available because it is a runtime dependency.
+
+Test it locally before pushing:
 
 ```powershell
-nslookup -type=NS unitalks.in 8.8.8.8   # check progress
+docker run -d --name uttest -p 8098:8080 `
+  -e JWT_SECRET=localtest -e TURN_SECRET=localturn -e TURN_HOST=13.219.31.203 `
+  unitalks:latest
+Invoke-WebRequest "http://localhost:8098"           -UseBasicParsing | Select-Object StatusCode
+Invoke-WebRequest "http://localhost:8098/health"     -UseBasicParsing | Select-Object -Expand Content
+Invoke-WebRequest "http://localhost:8098/api/turn"   -UseBasicParsing | Select-Object -Expand Content
+docker container stop uttest; docker container rm uttest
 ```
 
-> Keep going while that propagates — Phases 2 (partly) through 10 don't depend on it.
-> Only `acm wait certificate-validated` and the final `curl https://unitalks.in` do.
-
----
-
-## Phase 2 — ACM certificate (us-east-1)
+### Step 2 — push to ECR
 
 ```powershell
-$CERT_ARN = aws acm request-certificate `
-  --domain-name $DOMAIN `
-  --subject-alternative-names "www.$DOMAIN" "turn.$DOMAIN" `
-  --validation-method DNS `
-  --region us-east-1 `
-  --query CertificateArn --output text
-$CERT_ARN
-```
+$ACCOUNT = "037063405946"
+$REG = "$ACCOUNT.dkr.ecr.us-east-1.amazonaws.com"
+$IMG = "$REG/unitalks:latest"
 
-Write the DNS validation records into Route 53:
-
-```powershell
-Start-Sleep -Seconds 15
-$vo = (aws acm describe-certificate --certificate-arn $CERT_ARN --region us-east-1 `
-  --query 'Certificate.DomainValidationOptions[].ResourceRecord' | ConvertFrom-Json)
-
-$changes = @($vo | Sort-Object Name -Unique | ForEach-Object {
-  @{ Action = "UPSERT"; ResourceRecordSet = @{
-       Name = $_.Name; Type = $_.Type; TTL = 300
-       ResourceRecords = @(@{ Value = $_.Value }) } }
-})
-$json = @{ Changes = $changes } | ConvertTo-Json -Depth 8
-[IO.File]::WriteAllText("$env:TEMP\acm-validation.json", $json)
-
-aws route53 change-resource-record-sets --hosted-zone-id $ZONE_ID `
-  --change-batch "file://$env:TEMP\acm-validation.json"
-```
-
-Then block until issued (**requires the Hostinger nameserver change to be live**):
-
-```powershell
-aws acm wait certificate-validated --certificate-arn $CERT_ARN --region us-east-1
-aws acm describe-certificate --certificate-arn $CERT_ARN --region us-east-1 `
-  --query 'Certificate.Status' --output text    # want: ISSUED
-```
-
----
-
-## Phase 3 — Secrets into SSM Parameter Store
-
-```powershell
-$JWT  = -join ((1..64) | ForEach-Object { '{0:x2}' -f (Get-Random -Minimum 0 -Maximum 256) })
-$TURN = -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Minimum 0 -Maximum 256) })
-
-aws ssm put-parameter --name /unitalks/JWT_SECRET  --type SecureString --value $JWT  --overwrite
-aws ssm put-parameter --name /unitalks/TURN_SECRET --type SecureString --value $TURN --overwrite
-aws ssm get-parameters-by-path --path /unitalks --query 'Parameters[].Name' --output text
-```
-
-`JWT_SECRET` is mandatory — `server/src/config/env.ts:18` throws and the container exits
-without it. Neither secret is written to disk or committed; the EC2 boxes read them at boot
-through their instance role.
-
----
-
-## Phase 4 — ECR repository + push the backend image
-
-```powershell
-aws ecr create-repository --repository-name $ECR_REPO `
-  --image-scanning-configuration scanOnPush=true `
-  --query 'repository.repositoryUri' --output text
-
-docker build --platform linux/amd64 -t "${ECR_REPO}:latest" .\server
-docker tag "${ECR_REPO}:latest" $IMAGE
-```
-
-**Do not use `aws ecr get-login-password | docker login --password-stdin` here.** Piping the
-~1770-character token through a PowerShell 5.1 pipe mangles it and the registry answers
-`400 Bad Request`, even though the token itself is valid (a direct Basic-auth REST probe
-against `/v2/` returns 200). PowerShell 5.1 also has no `<` stdin redirection to work
-around it with. Write the auth into a throwaway Docker config instead — this also avoids
-Docker Desktop's `credsStore` swallowing the entry, and leaves your real
-`~/.docker/config.json` untouched:
-
-```powershell
-$REG = "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
 $cfgDir = Join-Path $env:TEMP "ut-docker-cfg"
 New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
-
-$pw = aws ecr get-login-password --region $REGION
+$pw = aws ecr get-login-password --region us-east-1
 $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("AWS:$pw"))
 [IO.File]::WriteAllText((Join-Path $cfgDir "config.json"),
   (@{ auths = @{ $REG = @{ auth = $auth } } } | ConvertTo-Json -Depth 6))
 
-docker --config $cfgDir push $IMAGE
+docker tag unitalks:latest $IMG
+docker --config $cfgDir push $IMG
 Remove-Item -Recurse -Force $cfgDir
 ```
 
-Docker Desktop must actually be running first — if `docker build` reports
-`failed to connect to the docker API at npipe:////./pipe/docker_engine`, start
-`"C:\Program Files\Docker\Docker\Docker Desktop.exe"` and wait for
-`docker info` to succeed.
+Writing an isolated config also stops Docker Desktop's `credsStore` from swallowing the
+entry, and leaves the real `~/.docker/config.json` untouched.
 
----
+### Step 3 — roll out a new deployment
 
-## Phase 5 — IAM role + instance profile for both EC2 boxes
+Secrets live in SSM Parameter Store and are read straight into variables — they are never
+written to the repo or echoed. Lightsail needs them as container environment variables, so
+**rotating a secret means redeploying.**
 
 ```powershell
-$inline = (Get-Content .\deployment\aws\iam-ec2-inline.json -Raw) -replace 'ACCOUNT_ID', $ACCOUNT
-[IO.File]::WriteAllText("$env:TEMP\iam-ec2-inline.json", $inline)
+$URL = "https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com"
+$JWT  = aws ssm get-parameter --name /unitalks/JWT_SECRET  --with-decryption --query 'Parameter.Value' --output text
+$TURN = aws ssm get-parameter --name /unitalks/TURN_SECRET --with-decryption --query 'Parameter.Value' --output text
 
-aws iam create-role --role-name unitalks-ec2-role `
-  --assume-role-policy-document file://deployment/aws/iam-ec2-trust.json
+$containers = @{ app = @{
+    image = "037063405946.dkr.ecr.us-east-1.amazonaws.com/unitalks:latest"
+    environment = @{
+      NODE_ENV = "production"; PORT = "8080"
+      JWT_SECRET = $JWT; TURN_SECRET = $TURN
+      TURN_HOST = "13.219.31.203"; CORS_ORIGIN = $URL
+    }
+    ports = @{ "8080" = "HTTP" }
+} } | ConvertTo-Json -Depth 8
+[IO.File]::WriteAllText("$env:TEMP\ls-containers.json", $containers)
 
-aws iam attach-role-policy --role-name unitalks-ec2-role `
-  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-aws iam attach-role-policy --role-name unitalks-ec2-role `
-  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
-aws iam put-role-policy --role-name unitalks-ec2-role `
-  --policy-name unitalks-ssm-params `
-  --policy-document "file://$env:TEMP\iam-ec2-inline.json"
+$endpoint = @{
+  containerName = "app"; containerPort = 8080
+  healthCheck = @{ path = "/health"; successCodes = "200"
+    healthyThreshold = 2; unhealthyThreshold = 3; timeoutSeconds = 5; intervalSeconds = 10 }
+} | ConvertTo-Json -Depth 6
+[IO.File]::WriteAllText("$env:TEMP\ls-endpoint.json", $endpoint)
 
-aws iam create-instance-profile --instance-profile-name unitalks-ec2-profile
-aws iam add-role-to-instance-profile `
-  --instance-profile-name unitalks-ec2-profile --role-name unitalks-ec2-role
+aws lightsail create-container-service-deployment --service-name unitalks `
+  --containers "file://$env:TEMP\ls-containers.json" `
+  --public-endpoint "file://$env:TEMP\ls-endpoint.json"
 
-Start-Sleep -Seconds 20   # IAM is eventually consistent; run-instances fails if you rush
+Remove-Item "$env:TEMP\ls-containers.json" -Force   # it holds the plaintext secrets
+```
+
+Then wait for it (a deployment takes ~3–5 minutes):
+
+```powershell
+do {
+  $j = aws lightsail get-container-services --service-name unitalks --query 'containerServices[0]' | ConvertFrom-Json
+  "service=$($j.state) deployment=$($j.currentDeployment.state)"
+  if ($j.state -eq "RUNNING" -or $j.currentDeployment.state -eq "FAILED") { break }
+  Start-Sleep -Seconds 25
+} while ($true)
+```
+
+### Step 4 — verify
+
+```powershell
+$URL = "https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com"
+Invoke-WebRequest $URL              -UseBasicParsing | Select-Object StatusCode
+Invoke-WebRequest "$URL/health"     -UseBasicParsing | Select-Object -Expand Content
+Invoke-WebRequest "$URL/api/turn"   -UseBasicParsing | Select-Object -Expand Content
+(Invoke-WebRequest "$URL/api/auth/token" -Method POST -UseBasicParsing).Content | ConvertFrom-Json
+```
+
+WebSocket check — a healthy server answers with `{"type":"ready","userId":"..."}`:
+
+```powershell
+$tok = ((Invoke-WebRequest "$URL/api/auth/token" -Method POST -UseBasicParsing).Content | ConvertFrom-Json).token
+$ws = New-Object Net.WebSockets.ClientWebSocket
+$uri = [Uri]("wss://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com/ws?token=" + [Uri]::EscapeDataString($tok))
+$cts = New-Object Threading.CancellationTokenSource(15000)
+$ws.ConnectAsync($uri, $cts.Token).Wait(); "state: " + $ws.State
+$buf = New-Object byte[] 4096
+$seg = New-Object ArraySegment[byte] -ArgumentList @(,$buf)
+$recv = $ws.ReceiveAsync($seg, $cts.Token)
+if ($recv.Wait(8000)) { [Text.Encoding]::UTF8.GetString($buf, 0, $recv.Result.Count) }
+$ws.Dispose()
+```
+
+Container logs:
+
+```powershell
+[Console]::OutputEncoding = [Text.Encoding]::UTF8   # the logs contain emoji
+aws lightsail get-container-log --service-name unitalks --container-name app `
+  --query 'logEvents[-20:].message' --output text
 ```
 
 ---
 
-## Phase 6 — Security groups
+## Operating the coturn box
+
+EC2 `unitalks-coturn`, Elastic IP `13.219.31.203`, security group `unitalks-turn-sg`
+(3478 TCP+UDP and 49160-49200 UDP open to the internet, which TURN requires; **no port 22**
+— shell access is SSM Session Manager, so there is no key pair to lose).
 
 ```powershell
-$VPC_ID = aws ec2 describe-vpcs --filters Name=is-default,Values=true `
-  --query 'Vpcs[0].VpcId' --output text
-
-# --- backend SG: port 80 reachable ONLY from CloudFront edge IPs ---
-$SG_BACKEND = aws ec2 create-security-group --group-name unitalks-backend-sg `
-  --description "UniTalks signaling backend" --vpc-id $VPC_ID `
-  --query GroupId --output text
-
-$CF_PL = aws ec2 describe-managed-prefix-lists `
-  --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing `
-  --query 'PrefixLists[0].PrefixListId' --output text
-
-$perm = @{ IpProtocol = "tcp"; FromPort = 80; ToPort = 80
-           PrefixListIds = @(@{ PrefixListId = $CF_PL }) }
-[IO.File]::WriteAllText("$env:TEMP\sg-backend.json",
-  "[" + ($perm | ConvertTo-Json -Depth 6 -Compress) + "]")
-
-aws ec2 authorize-security-group-ingress --group-id $SG_BACKEND `
-  --ip-permissions "file://$env:TEMP\sg-backend.json"
-
-# --- coturn SG: TURN ports must be open to the internet by design ---
-$SG_TURN = aws ec2 create-security-group --group-name unitalks-turn-sg `
-  --description "UniTalks coturn" --vpc-id $VPC_ID --query GroupId --output text
-
-aws ec2 authorize-security-group-ingress --group-id $SG_TURN --protocol tcp --port 3478 --cidr 0.0.0.0/0
-aws ec2 authorize-security-group-ingress --group-id $SG_TURN --protocol udp --port 3478 --cidr 0.0.0.0/0
-aws ec2 authorize-security-group-ingress --group-id $SG_TURN --protocol udp --port 49160-49200 --cidr 0.0.0.0/0
-
-"SG_BACKEND=$SG_BACKEND  SG_TURN=$SG_TURN  CF_PL=$CF_PL"
+aws ssm start-session --target i-0d47b65d96964ec38
+#   sudo docker ps
+#   sudo docker logs coturn --tail 40
+#   sudo /usr/local/bin/coturn-redeploy     # rebuild the container
 ```
 
-No port 22 on either box — shell access is SSM Session Manager (Phase 11), so there's no
-`.pem` to lose and no SSH surface.
+The image is pinned to `coturn/coturn:4.18.0`. It must stay pinned: `:latest` moved to 4.18,
+which **removed `--no-tlsv1_1` and deprecated `--no-cli`**, and `turnserver` responds to an
+unrecognized option by printing its usage and exiting 255 — the container sat in a restart
+loop until the flags were dropped.
 
----
+coturn reads its public IP from instance metadata **at container start**, so after any
+Elastic IP change run `coturn-redeploy`.
 
-## Phase 7 — Launch the backend EC2
-
-```powershell
-$AMI = aws ssm get-parameters `
-  --names /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 `
-  --query 'Parameters[0].Value' --output text
-
-# LF line endings and no BOM, or cloud-init chokes on the shebang
-$ud = (Get-Content .\deployment\aws\backend-userdata.sh -Raw) `
-        -replace '__IMAGE__', $IMAGE `
-        -replace '__CORS_ORIGIN__', "https://$DOMAIN"
-[IO.File]::WriteAllText("$env:TEMP\backend-userdata.sh", ($ud -replace "`r`n", "`n"))
-
-$EC2_BACKEND = aws ec2 run-instances `
-  --image-id $AMI --instance-type t3.micro `
-  --security-group-ids $SG_BACKEND `
-  --iam-instance-profile Name=unitalks-ec2-profile `
-  --user-data "file://$env:TEMP\backend-userdata.sh" `
-  --metadata-options "HttpTokens=required,HttpEndpoint=enabled" `
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=unitalks-backend}]' `
-  --query 'Instances[0].InstanceId' --output text
-
-aws ec2 wait instance-running --instance-ids $EC2_BACKEND
-
-# Elastic IP so the address survives a stop/start
-$EIP_BACKEND = aws ec2 allocate-address --domain vpc --query AllocationId --output text
-aws ec2 associate-address --instance-id $EC2_BACKEND --allocation-id $EIP_BACKEND
-
-$BACKEND_DNS = aws ec2 describe-instances --instance-ids $EC2_BACKEND `
-  --query 'Reservations[0].Instances[0].PublicDnsName' --output text
-"EC2_BACKEND=$EC2_BACKEND  BACKEND_DNS=$BACKEND_DNS  EIP_BACKEND=$EIP_BACKEND"
-```
-
-Bootstrap (dnf update → docker → ECR pull → run) takes ~3 min. `$BACKEND_DNS` re-resolves to
-the new Elastic IP, so it stays correct as the CloudFront origin.
-
----
-
-## Phase 8 — Launch the coturn EC2
-
-```powershell
-$udt = (Get-Content .\deployment\aws\coturn-userdata.sh -Raw) -replace "`r`n", "`n"
-[IO.File]::WriteAllText("$env:TEMP\coturn-userdata.sh", $udt)
-
-$EC2_TURN = aws ec2 run-instances `
-  --image-id $AMI --instance-type t3.micro `
-  --security-group-ids $SG_TURN `
-  --iam-instance-profile Name=unitalks-ec2-profile `
-  --user-data "file://$env:TEMP\coturn-userdata.sh" `
-  --metadata-options "HttpTokens=required,HttpEndpoint=enabled" `
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=unitalks-coturn}]' `
-  --query 'Instances[0].InstanceId' --output text
-
-aws ec2 wait instance-running --instance-ids $EC2_TURN
-
-$EIP_TURN = aws ec2 allocate-address --domain vpc --query AllocationId --output text
-aws ec2 associate-address --instance-id $EC2_TURN --allocation-id $EIP_TURN
-
-$TURN_IP = aws ec2 describe-addresses --allocation-ids $EIP_TURN `
-  --query 'Addresses[0].PublicIp' --output text
-"EC2_TURN=$EC2_TURN  TURN_IP=$TURN_IP  EIP_TURN=$EIP_TURN"
-```
-
-> coturn advertises its own public IP, read from instance metadata **at container start**.
-> Because the Elastic IP is attached after boot, rebuild the container once so it picks up
-> the final address:
->
-> ```powershell
-> aws ssm send-command --instance-ids $EC2_TURN `
->   --document-name AWS-RunShellScript `
->   --parameters 'commands=["/usr/local/bin/coturn-redeploy"]'
-> ```
->
-> **Passing multi-line scripts to `send-command`:** the `commands=[...]` shorthand is
+> **Passing multi-line scripts to `ssm send-command`:** the `commands=[...]` shorthand is
 > word-split by the CLI and silently corrupts anything containing spaces, `{{ }}` or `;`
-> (`Unknown options: {{.Status}};echo ...`). For more than one trivial command, write a
-> JSON file and pass `--parameters file://...`:
+> (`Unknown options: {{.Status}};echo ...`). Use a JSON file:
 >
 > ```powershell
 > [IO.File]::WriteAllText("$env:TEMP\ssm.json",
 >   (@{ commands = @('docker ps', 'docker logs coturn --tail 20') } | ConvertTo-Json -Depth 5))
-> aws ssm send-command --instance-ids $EC2_TURN `
+> aws ssm send-command --instance-ids i-0d47b65d96964ec38 `
 >   --document-name AWS-RunShellScript --parameters "file://$env:TEMP\ssm.json"
 > ```
 
----
+### Verifying TURN actually relays
 
-## Phase 9 — S3 bucket + frontend build
+Do **not** test from the coturn box itself — security groups are stateful, so a connection
+originating on the instance never evaluates the inbound rule and the test passes even when
+the port is closed to the world. Test from a different host. A STUN binding request is the
+quickest proof:
 
-```powershell
-aws s3api create-bucket --bucket $BUCKET --region us-east-1
-aws s3api put-public-access-block --bucket $BUCKET `
-  --public-access-block-configuration `
-  "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
-
-$env:ComSpec = "C:\Windows\SysWOW64\cmd.exe"   # see gotcha 3 at the top
-npm ci
-npm run build
-aws s3 sync .\build "s3://$BUCKET" --delete
+```python
+import socket, os, struct
+pkt = struct.pack(">HHI", 0x0001, 0, 0x2112A442) + os.urandom(12)
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(6)
+s.sendto(pkt, ("13.219.31.203", 3478))
+d, _ = s.recvfrom(2048)
+print("type 0x%04x" % struct.unpack(">H", d[0:2])[0])   # 0x0101 = Binding Success
 ```
 
-`REACT_APP_API_URL` is deliberately left **unset**: `src/utils/socketService.js:7-24` then
-falls back to `window.location.origin`, so API and WebSocket both ride the same CloudFront
-origin and there is no cross-origin request at all.
-
----
-
-## Phase 10 — CloudFront distribution + DNS
-
-```powershell
-$OAC_ID = aws cloudfront create-origin-access-control `
-  --origin-access-control-config "Name=unitalks-oac,SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=s3" `
-  --query 'OriginAccessControl.Id' --output text
-
-$cfg = (Get-Content .\deployment\aws\cloudfront-distribution.template.json -Raw) `
-  -replace '__CALLER_REF__', "unitalks-$(Get-Date -Format yyyyMMddHHmmss)" `
-  -replace '__BUCKET__', $BUCKET `
-  -replace '__OAC_ID__', $OAC_ID `
-  -replace '__BACKEND_DNS__', $BACKEND_DNS `
-  -replace '__CERT_ARN__', $CERT_ARN
-[IO.File]::WriteAllText("$env:TEMP\cf-dist.json", $cfg)
-
-$dist = aws cloudfront create-distribution `
-  --distribution-config "file://$env:TEMP\cf-dist.json" | ConvertFrom-Json
-$CF_ID     = $dist.Distribution.Id
-$CF_DOMAIN = $dist.Distribution.DomainName
-"CF_ID=$CF_ID  CF_DOMAIN=$CF_DOMAIN"
-```
-
-Let CloudFront (and only CloudFront) read the private bucket:
-
-```powershell
-$pol = @{ Version = "2012-10-17"; Statement = @(@{
-    Sid = "AllowCloudFrontOAC"; Effect = "Allow"
-    Principal = @{ Service = "cloudfront.amazonaws.com" }
-    Action = "s3:GetObject"; Resource = "arn:aws:s3:::$BUCKET/*"
-    Condition = @{ StringEquals = @{
-      "AWS:SourceArn" = "arn:aws:cloudfront::${ACCOUNT}:distribution/$CF_ID" } }
-  }) } | ConvertTo-Json -Depth 8
-[IO.File]::WriteAllText("$env:TEMP\bucket-policy.json", $pol)
-
-aws s3api put-bucket-policy --bucket $BUCKET --policy "file://$env:TEMP\bucket-policy.json"
-aws cloudfront wait distribution-deployed --id $CF_ID    # ~5-10 min
-```
-
-DNS records — apex + www as CloudFront aliases, `turn` as a plain A record:
-
-```powershell
-$recs = @(@("$DOMAIN", "www.$DOMAIN") | ForEach-Object {
-  @{ Action = "UPSERT"; ResourceRecordSet = @{
-       Name = $_; Type = "A"
-       AliasTarget = @{ HostedZoneId = "Z2FDTNDATAQYW2"   # fixed, global CloudFront zone id
-                        DNSName = $CF_DOMAIN; EvaluateTargetHealth = $false } } }
-})
-$recs += @{ Action = "UPSERT"; ResourceRecordSet = @{
-    Name = "turn.$DOMAIN"; Type = "A"; TTL = 300
-    ResourceRecords = @(@{ Value = $TURN_IP }) } }
-
-$json = @{ Changes = @($recs) } | ConvertTo-Json -Depth 10
-[IO.File]::WriteAllText("$env:TEMP\dns.json", $json)
-
-aws route53 change-resource-record-sets --hosted-zone-id $ZONE_ID `
-  --change-batch "file://$env:TEMP\dns.json"
-```
+Note that many consumer/campus networks block outbound 3478, so a failure from a laptop is
+not proof the server is down — which is the very reason TURN exists here.
 
 ---
 
-## Phase 11 — Verify
+## Current inventory and cost
+
+| Resource | Notes | ~$/mo |
+|---|---|---|
+| Lightsail container service `unitalks` | nano, scale 1, HTTPS included | 7.00 |
+| EC2 `unitalks-coturn` t3.micro | + Elastic IP (free while attached) | ~7.50 |
+| ECR repo `unitalks` | Lightsail pulls from it | ~0.05 |
+| SSM params ×2 | SecureString | 0 |
+| | | **~14.55** |
+
+## Teardown of the old path (already done)
+
+Deleted once Lightsail was live and verified: backend EC2 `i-02da9a58316f56aa6`, its
+Elastic IP, `unitalks-backend-sg`, the S3 bucket `unitalks-frontend-037063405946`, the
+`unitalks-backend` ECR repo, the CloudFront origin access control, the pending ACM
+certificate, and the `unitalks.in` Route 53 hosted zone.
+
+Full teardown of what remains:
 
 ```powershell
-# The backend is only reachable through CloudFront (the SG blocks you directly)
-curl.exe -s "https://$CF_DOMAIN/health"
-curl.exe -s -X POST "https://$CF_DOMAIN/api/auth/token"
-
-# Shell in without SSH
-aws ssm start-session --target $EC2_BACKEND
-#   sudo docker ps
-#   sudo docker logs unitalks-backend --tail 50
-#   sudo cat /var/log/unitalks-bootstrap.log
-
-aws ssm start-session --target $EC2_TURN
-#   sudo docker logs coturn --tail 50
-
-# WebSocket smoke test
-$tok = (curl.exe -s -X POST "https://$CF_DOMAIN/api/auth/token" | ConvertFrom-Json).token
-npx -y wscat -c "wss://$CF_DOMAIN/ws?token=$tok"
-
-# Once the Hostinger nameserver change has propagated
-curl.exe -sI "https://unitalks.in"
+aws lightsail delete-container-service --service-name unitalks
+aws ec2 terminate-instances --instance-ids i-0d47b65d96964ec38
+aws ec2 release-address --allocation-id eipalloc-0261fe2112809f99f
+aws ecr delete-repository --repository-name unitalks --force
+aws ssm delete-parameters --names /unitalks/JWT_SECRET /unitalks/TURN_SECRET
 ```
 
-TURN check: open https://icetest.info, enter `turn:turn.unitalks.in:3478` with credentials
-from `https://unitalks.in/api/turn`, and confirm a candidate of type **relay** appears.
+An Elastic IP that is allocated but **not** attached is billed hourly — release it.
 
 ---
 
-## Redeploying afterwards
+## Appendix — the CloudFront + custom domain path
 
-```powershell
-# Frontend
-npm run build
-aws s3 sync .\build "s3://$BUCKET" --delete
-aws cloudfront create-invalidation --distribution-id $CF_ID --paths "/*"
+Only worth doing once CloudFront is enabled on the account *and* you are willing to move
+the `unitalks.in` nameservers to Route 53. It buys a real domain, a CDN, and the option of
+TURNS on 443; it costs an extra ~$0.50/mo for the hosted zone plus CDN traffic.
 
-# Backend
-docker build --platform linux/amd64 -t $IMAGE .\server
-docker push $IMAGE
-aws ssm send-command --instance-ids $EC2_BACKEND `
-  --document-name AWS-RunShellScript `
-  --parameters 'commands=["/usr/local/bin/unitalks-redeploy"]'
-```
+`cloudfront-distribution.template.json` and `backend-userdata.sh` in this directory are the
+leftovers of that design and are **not used by the current deployment**. The outline:
 
----
+1. Support case (Console → Support → *Account and billing* → service **CloudFront**) to lift
+   `Your account must be verified before you can add new CloudFront resources`.
+2. `aws route53 create-hosted-zone --name unitalks.in`, then set those four nameservers at
+   Hostinger and wait for delegation.
+3. `aws acm request-certificate` in **us-east-1** (CloudFront only accepts certs from there)
+   for the apex, `www` and `turn`; UPSERT the returned validation CNAMEs into the zone and
+   `aws acm wait certificate-validated`.
+4. Frontend back into a private S3 bucket, fronted by CloudFront with an origin access
+   control; behaviours `/api/*` and `/ws*` pointed at the signaling origin with the
+   `CachingDisabled` + `AllViewer` managed policies.
+5. Alias A records for the apex and `www` at the distribution (`HostedZoneId`
+   `Z2FDTNDATAQYW2`), plus an A record for `turn` at the coturn Elastic IP.
 
-## Known limitations of this topology
+Two things to know if you go back to it: CloudFront's `CustomErrorResponses` are
+distribution-wide, so rewriting 403/404 to `/index.html` for React Router deep links also
+masks genuine 404s from `/api/*`; and a CloudFront→EC2 origin over plain HTTP leaves the
+edge-to-origin hop unencrypted unless you put an ALB with its own ACM certificate in front.
 
-- **Single backend instance, by necessity.** `server/src/services/stateManager.ts:5-7` holds
-  users, sessions and match queues in in-process `Map`s. A second instance would split the
-  matchmaking pool, so users on different boxes could never be paired. Scaling out requires
-  moving that state to ElastiCache/Redis first.
-- **CloudFront → EC2 is plain HTTP.** The viewer hop is TLS; the edge-to-origin hop is not.
-  Fixing it properly means an ALB with an ACM cert in front of the instance (+~$18/mo).
-- **`CustomErrorResponses` is distribution-wide.** Rewriting 403/404 to `/index.html` is what
-  makes React Router deep links work, but it also masks a genuine 404 from `/api/*`.
-- **coturn has no TLS listener (5349).** UDP/TCP 3478 covers the usual symmetric-NAT case;
-  networks that only allow outbound 443 still won't relay. Adding TURNS means mounting the
-  ACM cert (or a certbot cert) into the coturn container.
-
-## Teardown
-
-```powershell
-# CloudFront must be disabled and fully deployed before it can be deleted
-aws ec2 terminate-instances --instance-ids $EC2_BACKEND $EC2_TURN
-aws ec2 release-address --allocation-id $EIP_BACKEND
-aws ec2 release-address --allocation-id $EIP_TURN
-aws s3 rb "s3://$BUCKET" --force
-aws ecr delete-repository --repository-name $ECR_REPO --force
-aws route53 delete-hosted-zone --id $ZONE_ID
-```
-
-An Elastic IP that is allocated but **not** attached is billed hourly — release both.
+Also stale in the repo from the previous Vercel/AWS attempts, kept only for history:
+`buildspec.yml`, `amplify.yml`, `cloudfront-current-config.json`,
+`cloudfront-full-config.json` (all reference the old account `278513763034`).

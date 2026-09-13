@@ -1,6 +1,8 @@
 import cors from 'cors';
 import express from 'express';
+import fs from 'fs';
 import { createServer } from 'http';
+import path from 'path';
 import { WebSocketServer } from 'ws';
 import { env } from './config/env';
 import { verifyToken } from './config/jwt';
@@ -27,6 +29,22 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/turn', turnRoutes);
+
+// Serve the built React app from the same origin as the API and WebSocket, so there is
+// no CORS and no mixed-content problem. Absent in local dev, where CRA serves on :3000.
+const publicDir = path.join(__dirname, '..', 'public');
+if (fs.existsSync(path.join(publicDir, 'index.html'))) {
+  app.use(express.static(publicDir));
+
+  // SPA fallback. Registered after /health and /api/* so it only catches client routes;
+  // /ws is a WebSocket upgrade and never reaches the Express router.
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+  logger.info(`Serving frontend from ${publicDir}`);
+} else {
+  logger.info('No frontend build found; running as API/WebSocket only');
+}
 
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
