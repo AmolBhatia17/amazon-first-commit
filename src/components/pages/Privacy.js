@@ -1,136 +1,25 @@
 import React from 'react';
-import styled from 'styled-components';
 import Header from '../layout/Header';
+import Footer from '../layout/Footer';
 
-const PrivacyContainer = styled.div`
-  height: 100vh;
-  max-width: 100vw;
-  background: ${({ theme }) => theme.colors.appBg};
-  color: #F8FAFC;
-  overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  z-index: 0;
-`;
+import * as CP from '../ui/ContentPage';
 
-const PrivacyContent = styled.div`
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 90px 20px 40px;
-  line-height: 1.7;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-`;
-
-const PrivacyTitle = styled.h1`
-  font-size: 2.6rem;
-  font-weight: 900;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #1DB954 0%, #19a64c 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-align: center;
-  
-  @media (max-width: 768px) {
-    font-size: 2.2rem;
-  }
-`;
-
-const LastUpdated = styled.p`
-  text-align: center;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  margin-bottom: 1.2rem;
-  font-size: 1rem;
-`;
-
-const Section = styled.section`
-  margin-bottom: 2rem;
-`;
-
-const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 800;
-  margin-bottom: 0.75rem;
-  color: #F8FAFC;
-  border-bottom: 2px solid rgba(29,185,84,0.55);
-  padding-bottom: 0.35rem;
-  
-  @media (max-width: 768px) {
-    font-size: 1.3rem;
-  }
-`;
-
-const SubSectionTitle = styled.h3`
-  font-size: 1.4rem;
-  font-weight: 600;
-  margin-bottom: 0.8rem;
-  color: #F8FAFC;
-  
-  @media (max-width: 768px) {
-    font-size: 1.2rem;
-  }
-`;
-
-const SubSubSectionTitle = styled.h4`
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin-bottom: 0.6rem;
-  color: #F8FAFC;
-  
-  @media (max-width: 768px) {
-    font-size: 1.1rem;
-  }
-`;
-
-const Paragraph = styled.p`
-  margin-bottom: 1rem;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: 1rem;
-  
-  @media (max-width: 768px) {
-    font-size: 0.95rem;
-  }
-`;
-
-const UnorderedList = styled.ul`
-  margin-bottom: 1rem;
-  padding-left: 1.5rem;
-`;
-
-const ListItem = styled.li`
-  margin-bottom: 0.5rem;
-  color: #E2E8F0;
-`;
-
-const Strong = styled.strong`
-  color: #F8FAFC;
-  font-weight: 600;
-`;
-
-const Link = styled.a`
-  color: #1DB954;
-  text-decoration: none;
-  font-weight: 500;
-  
-  &:hover {
-    text-decoration: underline;
-  }
-`;
-
-const ContactList = styled.ul`
-  list-style: none;
-  padding-left: 0;
-`;
-
-const ContactItem = styled.li`
-  margin-bottom: 0.5rem;
-  color: #E2E8F0;
-`;
+/* Amber Paper content-page kit (see ../ui/ContentPage). */
+const PrivacyContainer = CP.Shell;
+const PrivacyContent = CP.Sheet;
+const PrivacyTitle = CP.Title;
+const LastUpdated = CP.Meta;
+const Section = CP.Section;
+const SectionTitle = CP.SectionTitle;
+const SubSectionTitle = CP.SubTitle;
+const SubSubSectionTitle = CP.SubSubTitle;
+const Paragraph = CP.Paragraph;
+const UnorderedList = CP.List;
+const ListItem = CP.ListItem;
+const Strong = CP.StrongText;
+const Link = CP.TextLink;
+const ContactList = CP.List;
+const ContactItem = CP.ListItem;
 
 function Privacy() {
   return (
@@ -425,6 +314,7 @@ function Privacy() {
           </ContactList>
         </Section>
       </PrivacyContent>
+      <Footer />
     </PrivacyContainer>
   );
 }

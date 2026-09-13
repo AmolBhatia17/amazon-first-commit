@@ -30,30 +30,28 @@ const BoardGrid = styled.div`
   aspect-ratio: 1;
   overflow: hidden;
   flex-shrink: 0;
-  border: 2px solid #333;
-  ${({ $myTurn }) => $myTurn && 'box-shadow: 0 0 24px #1DB954, 0 0 48px rgba(29,185,84,0.4);'}
+  border: 2px solid ${({ theme }) => theme.colors.ink};
+  border-radius: 12px;
+  ${({ $myTurn, theme }) => $myTurn && `box-shadow: 0 0 0 3px ${theme.colors.sun};`}
   transition: box-shadow 0.2s ease;
 `;
 
-/* Alternating squares: green fully filled, black fully filled. */
+/* Flat squares: paper white and sun amber. No bevel, no texture. */
 const Cell = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0a0a0a;
+  background: ${({ $light, theme }) => ($light ? theme.colors.sun : theme.colors.paper)};
   cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
   position: relative;
   border: none;
 
-  box-shadow: ${({ $light }) =>
-    $light ? 'inset 0 0 0 9999px rgba(34,197,94,0.5)' : 'none'};
-
   &:hover {
-    ${({ $clickable }) => $clickable && 'filter: brightness(1.15);'}
+    ${({ $clickable }) => $clickable && 'filter: brightness(0.94);'}
   }
 `;
 
-/* White side = solid white. Black side = solid amber/gold with dark outline. Both visible on green & black. */
+/* White pieces read as paper with an ink outline; black pieces are solid ink. */
 const PieceSpan = styled.span`
   font-size: clamp(20px, 5.5vw, 30px);
   font-weight: bold;
@@ -62,33 +60,35 @@ const PieceSpan = styled.span`
   line-height: 1;
   ${({ $whiteFilled }) =>
     $whiteFilled
-      ? 'color: #ffffff; text-shadow: 0 0 2px #000, 0 0 4px #000, 1px 1px 2px #000, -1px -1px 2px #000;'
-      : 'color:rgb(26, 158, 35); -webkit-text-stroke: 1.5pxrgb(10, 12, 16); text-shadow: 0 0 2px #000, 0 0 4px #000, 1px 1px 1px #000;'}
+      ? 'color: #FFFFFF; -webkit-text-stroke: 1.2px #1C1C1E; text-shadow: 0 1px 0 rgba(28,28,30,0.35);'
+      : 'color: #1C1C1E; text-shadow: 0 1px 0 rgba(255,255,255,0.35);'}
 `;
 
 const HighlightDot = styled.div`
-  width: 25%;
-  height: 25%;
-  border-radius: 50%; 
-  background: rgba(255,255,255,0.5);
+  width: 26%;
+  height: 26%;
+  border-radius: 50%;
+  background: ${({ theme }) => theme.colors.blue};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
   position: absolute;
 `;
 
 const LastMoveHighlight = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(29, 185, 84, 0.35);
+  background: rgba(45, 127, 249, 0.22);
+  box-shadow: inset 0 0 0 2px ${({ theme }) => theme.colors.blue};
   pointer-events: none;
 `;
 
 const GameOverText = styled.div`
   margin-top: 10px;
   font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: ${({ theme }) => theme.colors.ink};
   text-align: center;
 `;
-
 const SYMBOLS = { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙', k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
 function ChessBoard({ state, amIWhite, onMove, disabled }) {

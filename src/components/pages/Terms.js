@@ -1,110 +1,21 @@
 import React from 'react';
-import styled from 'styled-components';
 import Header from '../layout/Header';
+import Footer from '../layout/Footer';
 
-const TermsContainer = styled.div`
-  height: 100vh;
-  max-width: 100vw;
-  background: ${({ theme }) => theme.colors.appBg};
-  color: #F8FAFC;
-  overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  z-index: 0;
-`;
+import * as CP from '../ui/ContentPage';
 
-const TermsContent = styled.div`
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 90px 20px 40px;
-  line-height: 1.7;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-`;
-
-const ContentCard = styled.div`
-  background: rgba(17, 24, 39, 0.8);
-  border: 1px solid rgba(29,185,84,0.35);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 10px 40px rgba(29,185,84,0.08);
-  backdrop-filter: blur(6px);
-`;
-
-const TermsTitle = styled.h1`
-  font-size: 2.6rem;
-  font-weight: 900;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #1DB954 0%, #19a64c 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-align: center;
-  
-  @media (max-width: 768px) {
-    font-size: 2.2rem;
-  }
-`;
-
-const EffectiveDate = styled.p`
-  text-align: center;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  margin-bottom: 1.2rem;
-  font-size: 1rem;
-`;
-
-const WelcomeParagraph = styled.p`
-  margin-bottom: 2rem;
-  color: #E2E8F0;
-  font-size: 1.1rem;
-  font-weight: 500;
-  
-  @media (max-width: 768px) {
-    font-size: 1rem;
-  }
-`;
-
-const Section = styled.section`
-  margin-bottom: 2rem;
-`;
-
-const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 800;
-  margin-bottom: 0.75rem;
-  color: #F8FAFC;
-  border-bottom: 2px solid rgba(29,185,84,0.55);
-  padding-bottom: 0.35rem;
-  
-  @media (max-width: 768px) {
-    font-size: 1.3rem;
-  }
-`;
-
-const Paragraph = styled.p`
-  margin-bottom: 1rem;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: 1rem;
-  
-  @media (max-width: 768px) {
-    font-size: 0.95rem;
-  }
-`;
-
-const UnorderedList = styled.ul`
-  margin-bottom: 1rem;
-  padding-left: 1.5rem;
-`;
-
-const ListItem = styled.li`
-  margin-bottom: 0.8rem;
-  color: #E2E8F0;
-  line-height: 1.5;
-`;
+/* Amber Paper content-page kit (see ../ui/ContentPage). */
+const TermsContainer = CP.Shell;
+const TermsContent = CP.Wrap;
+const ContentCard = CP.Card;
+const TermsTitle = CP.Title;
+const EffectiveDate = CP.Meta;
+const WelcomeParagraph = CP.Subtitle;
+const Section = CP.Section;
+const SectionTitle = CP.SectionTitle;
+const Paragraph = CP.Paragraph;
+const UnorderedList = CP.List;
+const ListItem = CP.ListItem;
 
 function Terms() {
   return (
@@ -201,6 +112,7 @@ function Terms() {
           </Section>
         </ContentCard>
       </TermsContent>
+      <Footer />
     </TermsContainer>
   );
 }

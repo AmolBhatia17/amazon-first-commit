@@ -63,7 +63,7 @@ class StickMan {
     ctx.translate(-this.x, -(this.y + this.yOffset));
 
     // Light grey for body, arms, legs
-    ctx.strokeStyle = "#aaaaaa";
+    ctx.strokeStyle = "rgba(28, 28, 30, 0.30)";
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -374,7 +374,7 @@ function StartChatDoodles() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Ground line (light grey)
-      ctx.strokeStyle = "#aaaaaa";
+      ctx.strokeStyle = "rgba(28, 28, 30, 0.30)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, canvas.height - 10);

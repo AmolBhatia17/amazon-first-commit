@@ -1,288 +1,339 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
-import { FiMessageCircle, FiMic, FiVideo, FiArrowRight } from 'react-icons/fi';
+import {
+  FiMessageSquare, FiMic, FiVideo, FiArrowRight, FiZap, FiCheck,
+  FiLock, FiShield, FiSlash,
+} from 'react-icons/fi';
 import Header from '../layout/Header';
+import Footer from '../layout/Footer';
 
-// Removed glow animation to fix flickering issue on mobile
-
-const StartChatContainer = styled.div`
+const Page = styled.div`
+  width: 100%;
   min-height: 100vh;
-  max-width: 100vw;
-  background: #000;
-  color: #F8FAFC;
-  overflow-x: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  padding-top: 72px;
   display: flex;
   flex-direction: column;
   position: relative;
-  z-index: 0;
+
+  @media (max-width: 768px) { padding-top: 60px; }
 `;
 
-const MainContent = styled.div`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  padding: 40px 20px 40px;
-  margin-top: 70px;
+const Main = styled.div`
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 44px 24px 8px;
   position: relative;
   z-index: 1;
 
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(60% 80% at 50% 20%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.4) 100%),
-      radial-gradient(600px 300px at 50% 10%, rgba(29,185,84,0.12), rgba(0,0,0,0) 60%);
-    z-index: 0;
-    pointer-events: none;
-  }
-
-  @media (max-width: 768px) {
-    margin-top: 0;
-    padding: 30px 16px 30px;
-  }
+  @media (max-width: 768px) { padding: 28px 16px 8px; }
 `;
 
 const TitleBlock = styled.div`
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  max-width: 640px;
-  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-
-  @media (max-width: 768px) {
-    margin-bottom: 1rem;
-  }
+  margin-bottom: 36px;
 `;
 
 const TaglinePill = styled.div`
-  display: inline-block;
-  background: rgba(29,185,84,0.2);
-  border: 1px solid rgba(29,185,84,0.5);
-  color: #1DB954;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
   border-radius: 999px;
-  margin-bottom: 1rem;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  box-shadow: 0 2px 0 ${({ theme }) => theme.colors.ink};
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.ink};
+  margin-bottom: 22px;
 `;
 
 const CardTitle = styled.h1`
-  font-size: 2.25rem;
-  font-weight: 900;
-  margin: 0 0 0.5rem 0;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  font-size: 50px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0 0 16px;
+  max-width: 760px;
 
-  @media (max-width: 768px) {
-    font-size: 1.75rem;
+  @media (max-width: 900px) { font-size: 38px; }
+  @media (max-width: 560px) { font-size: 30px; }
+`;
+
+const Marked = styled.span`
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+
+  span { position: relative; z-index: 1; }
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    bottom: -3px;
+    height: 9px;
+    background: ${({ theme }) => theme.colors.ink};
+    border-radius: 999px / 8px;
+    transform: rotate(-1deg);
+    z-index: 0;
   }
 `;
 
-const TitleGreen = styled.span`
-  color: #1DB954;
-`;
-
-const TitleHighlight = styled.span`
-  color: #1DB954;
-  background: rgba(29,185,84,0.15);
-  padding: 0 6px;
-  border-radius: 6px;
-`;
-
 const CardSub = styled.p`
-  color: rgba(255,255,255,0.7);
-  font-size: 1rem;
-  margin: 0 0 1.25rem 0;
-  line-height: 1.6;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(28, 28, 30, 0.68);
+  max-width: 620px;
+  margin: 0;
+
+  @media (max-width: 560px) { font-size: 15px; }
 `;
 
 const OptionsRow = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-  width: 100%;
-  max-width: 900px;
+  gap: 20px;
+  margin-bottom: 28px;
 
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
-  }
+  @media (max-width: 900px) { grid-template-columns: 1fr; }
 `;
 
 const ChatOption = styled(Link)`
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 26px;
+  text-decoration: none;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 5px 0 ${({ theme }) => theme.colors.ink};
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+
+  &:hover { transform: translateY(-3px); box-shadow: 0 8px 0 ${({ theme }) => theme.colors.ink}; }
+  &:active { transform: translateY(0) scale(0.99); box-shadow: 0 3px 0 ${({ theme }) => theme.colors.ink}; }
+
+  @media (max-width: 900px) { padding: 20px; }
+`;
+
+const OptionTag = styled.span`
+  display: inline-flex;
+  align-self: flex-start;
   align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  color: #F8FAFC;
-  background: linear-gradient(180deg, rgba(18,18,18,0.95) 0%, rgba(8,8,8,0.98) 100%);
-  border: 1px solid rgba(29,185,84,0.4);
-  border-radius: 20px;
-  padding: 2rem 1.5rem;
-  transition: all 0.25s ease;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 0 20px rgba(29,185,84,0.15);
-  backdrop-filter: blur(12px);
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(100% 100% at 50% 0%, rgba(29,185,84,0.12), transparent 70%);
-    opacity: 0;
-    transition: opacity 0.25s ease;
-  }
-
-  &:hover {
-    border-color: rgba(29,185,84,0.75);
-    transform: translateY(-5px);
-    box-shadow: 0 16px 48px rgba(29,185,84,0.25), 0 0 0 1px rgba(29,185,84,0.4);
-    &::before { opacity: 1; }
-  }
-
-  @media (max-width: 768px) {
-    flex-direction: row;
-    justify-content: flex-start;
-    text-align: left;
-    gap: 1.25rem;
-    padding: 1.5rem 1.5rem;
-  }
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: ${({ $bg, theme }) => $bg || theme.colors.paperAlt};
+  border: 1.5px solid ${({ theme }) => theme.colors.line};
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.ink};
+  margin-bottom: 20px;
 `;
 
 const IconWrap = styled.div`
-  width: 60px;
-  height: 60px;
-  border-radius: 16px;
-  background: radial-gradient(100% 100% at 50% 0%, rgba(29,185,84,0.5), rgba(0,0,0,0.9));
-  border: 1px solid rgba(29,185,84,0.5);
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: ${({ $bg }) => $bg};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 1rem;
-  color: #E5E7EB;
-  position: relative;
-  z-index: 1;
-  box-shadow: 0 0 20px rgba(29,185,84,0.15);
-
-  svg { width: 28px; height: 28px; }
-
-  @media (max-width: 768px) {
-    width: 52px;
-    height: 52px;
-    margin-bottom: 0;
-    flex-shrink: 0;
-    svg { width: 24px; height: 24px; }
-  }
+  font-size: 25px;
+  color: ${({ $fg, theme }) => $fg || theme.colors.ink};
+  margin-bottom: 18px;
 `;
 
-const CardTextWrap = styled.div`
+const OptionLabel = styled.h2`
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.028em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0 0 10px;
+`;
+
+const OptionDesc = styled.p`
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(28, 28, 30, 0.66);
+  margin: 0 0 18px;
+`;
+
+const FeatureList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
   display: flex;
   flex-direction: column;
+  gap: 9px;
+  flex: 1;
+`;
+
+const FeatureItem = styled.li`
+  display: flex;
   align-items: center;
-  position: relative;
-  z-index: 1;
-  @media (max-width: 768px) {
-    align-items: flex-start;
-  }
+  gap: 9px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.ink};
+
+  svg { color: ${({ theme }) => theme.colors.blue}; flex-shrink: 0; }
 `;
 
-const OptionLabel = styled.span`
-  font-weight: 800;
-  font-size: 1.15rem;
-  letter-spacing: -0.02em;
-
-  @media (max-width: 768px) {
-    font-size: 1.05rem;
-  }
+const OptionFoot = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid ${({ theme }) => theme.colors.line};
 `;
 
-const OptionDesc = styled.span`
-  font-size: 0.85rem;
-  color: rgba(255,255,255,0.6);
-  margin-top: 0.35rem;
-  line-height: 1.4;
-  max-width: 140px;
-  text-align: center;
-
-  @media (max-width: 768px) {
-    text-align: left;
-    max-width: none;
-    margin-top: 0.2rem;
-  }
+const OptionFootText = styled.span`
+  font-size: 14.5px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.ink};
 `;
 
 const ArrowWrap = styled.span`
-  color: #1DB954;
-  font-size: 1.25rem;
-  margin-top: 0.75rem;
-  transition: transform 0.2s ease;
-  position: relative;
-  z-index: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  flex-shrink: 0;
+`;
 
-  ${ChatOption}:hover & {
-    transform: translateX(4px);
-  }
+const AssuranceBar = styled.div`
+  background: ${({ theme }) => theme.colors.sunTint};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.panel};
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 34px;
 
   @media (max-width: 768px) {
-    margin-top: 0;
-    margin-left: auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
   }
 `;
 
-function StartChat() {
+const AssuranceItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.ink};
 
+  svg { flex-shrink: 0; }
+`;
+
+function StartChat() {
   return (
-    <StartChatContainer>
-      <Header logo="Unitalks" hasSidebar={false} />
-      <MainContent>
+    <Page>
+      <Header />
+
+      <Main>
         <TitleBlock>
-          <TaglinePill>TEXT • VOICE • VIDEO</TaglinePill>
+          <TaglinePill><FiZap /> Step 1 of 1 — pick your vibe</TaglinePill>
           <CardTitle>
-            <TitleGreen>Lights on.</TitleGreen>{' '}
-            <TitleHighlight>Chat</TitleHighlight> reimagined.
+            Choose how you want to <Marked><span>connect</span></Marked> tonight.
           </CardTitle>
           <CardSub>
-            Minimal UI, maximal energy. Meet new minds instantly — in a slick green world.
+            Skip the small talk. Anonymous, instant pairing with other college students — no
+            account, no phone number, nothing saved.
           </CardSub>
         </TitleBlock>
+
         <OptionsRow>
-          <ChatOption to="/video">
-            <IconWrap><FiVideo /></IconWrap>
-            <CardTextWrap>
-              <OptionLabel>Video Chat</OptionLabel>
-              <OptionDesc>Face-to-face. Minimal UI, maximal vibe.</OptionDesc>
-            </CardTextWrap>
-            <ArrowWrap><FiArrowRight /></ArrowWrap>
-          </ChatOption>
           <ChatOption to="/text">
-            <IconWrap><FiMessageCircle /></IconWrap>
-            <CardTextWrap>
-              <OptionLabel>Text Chat</OptionLabel>
-              <OptionDesc>Fast bubbles, clean layout. Say more with less.</OptionDesc>
-            </CardTextWrap>
-            <ArrowWrap><FiArrowRight /></ArrowWrap>
+            <OptionTag $bg="#FDE9AE"><FiZap /> Fastest · Low bandwidth</OptionTag>
+            <IconWrap $bg="#F9C74A"><FiMessageSquare /></IconWrap>
+            <OptionLabel>Text Chat</OptionLabel>
+            <OptionDesc>
+              Casual hostel banter, exam rants and late-night study panic. Zero setup, instant matches.
+            </OptionDesc>
+            <FeatureList>
+              <FeatureItem><FiCheck /> No microphone or camera needed</FeatureItem>
+              <FeatureItem><FiCheck /> Reply to any message</FeatureItem>
+              <FeatureItem><FiCheck /> Works on slow connections</FeatureItem>
+            </FeatureList>
+            <OptionFoot>
+              <OptionFootText>Enter text lounge</OptionFootText>
+              <ArrowWrap><FiArrowRight /></ArrowWrap>
+            </OptionFoot>
           </ChatOption>
+
           <ChatOption to="/voice">
-            <IconWrap><FiMic /></IconWrap>
-            <CardTextWrap>
-              <OptionLabel>Voice Chat</OptionLabel>
-              <OptionDesc>Crystal-clear audio. Low latency, high energy.</OptionDesc>
-            </CardTextWrap>
-            <ArrowWrap><FiArrowRight /></ArrowWrap>
+            <OptionTag $bg="#DCE9FE"><FiMic /> Crystal audio · Zero video</OptionTag>
+            <IconWrap $bg="#2D7FF9" $fg="#FFFFFF"><FiMic /></IconWrap>
+            <OptionLabel>Voice Chat</OptionLabel>
+            <OptionDesc>
+              Late-night call vibes without sharing numbers or social handles. Pure, candid conversation.
+            </OptionDesc>
+            <FeatureList>
+              <FeatureItem><FiCheck /> Live voice visualizer</FeatureItem>
+              <FeatureItem><FiCheck /> Listen Along music sync</FeatureItem>
+              <FeatureItem><FiCheck /> Skip to a new match anytime</FeatureItem>
+            </FeatureList>
+            <OptionFoot>
+              <OptionFootText>Join voice room</OptionFootText>
+              <ArrowWrap><FiArrowRight /></ArrowWrap>
+            </OptionFoot>
+          </ChatOption>
+
+          <ChatOption to="/video">
+            <OptionTag $bg="#FDD9B5"><FiVideo /> Face to face</OptionTag>
+            <IconWrap $bg="#F59033"><FiVideo /></IconWrap>
+            <OptionLabel>Video Chat</OptionLabel>
+            <OptionDesc>
+              Spontaneous webcam pairing with another student, streamed directly peer-to-peer.
+            </OptionDesc>
+            <FeatureList>
+              <FeatureItem><FiCheck /> Peer-to-peer stream</FeatureItem>
+              <FeatureItem><FiCheck /> Side-by-side live chat</FeatureItem>
+              <FeatureItem><FiCheck /> Chess &amp; icebreaker games</FeatureItem>
+            </FeatureList>
+            <OptionFoot>
+              <OptionFootText>Start camera lobby</OptionFootText>
+              <ArrowWrap><FiArrowRight /></ArrowWrap>
+            </OptionFoot>
           </ChatOption>
         </OptionsRow>
-      </MainContent>
-    </StartChatContainer>
+
+        <AssuranceBar>
+          <AssuranceItem><FiLock /> No logs kept</AssuranceItem>
+          <AssuranceItem><FiShield /> Peer-to-peer WebRTC, encrypted in transit</AssuranceItem>
+          <AssuranceItem><FiSlash /> No real name or phone number needed</AssuranceItem>
+        </AssuranceBar>
+      </Main>
+
+      <Footer />
+    </Page>
   );
 }
 

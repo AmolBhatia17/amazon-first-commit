@@ -1,112 +1,172 @@
 import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 
-/* Outside area: transparent + blur so background shows through */
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  display: grid;
-  place-items: center;
-  z-index: 99999;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(28, 28, 30, 0.55);
+
+  @media (max-width: 560px) { align-items: flex-end; padding: 0; }
 `;
 
-/* Form box: totally solid black - forced so no parent can make it transparent */
+const popUp = keyframes`
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
 const Card = styled.div`
-  width: 92%;
-  max-width: 560px;
-  background: #000000 !important;
-  background-color: #000000 !important;
-  opacity: 1 !important;
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 16px;
-  padding: 1.25rem;
-  color: #e5e7eb;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-  isolation: isolate;
-  position: relative;
-  z-index: 100000;
+  width: 100%;
+  max-width: 480px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 26px;
+  box-shadow: 0 5px 0 ${({ theme }) => theme.colors.ink};
+  animation: ${popUp} 0.26s cubic-bezier(0.34, 1.4, 0.64, 1);
+  max-height: 90vh;
+  overflow-y: auto;
+
+  @media (max-width: 560px) {
+    max-width: 100%;
+    border-radius: ${({ theme }) => theme.radii.card} ${({ theme }) => theme.radii.card} 0 0;
+    border-bottom: none;
+    box-shadow: none;
+    padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+  }
 `;
 
 const Title = styled.h3`
-  margin: 0 0 0.5rem 0;
-  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0 0 6px;
 `;
 
 const Desc = styled.p`
-  margin: 0 0 1rem 0;
-  color: #b3b3b3;
-  font-size: 0.95rem;
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: ${({ theme }) => theme.colors.muted};
+  margin: 0 0 20px;
 `;
 
 const Row = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 7px;
+  margin-bottom: 14px;
 `;
 
 const Label = styled.label`
+  display: block;
+  font-size: 13px;
   font-weight: 700;
-  font-size: 0.9rem;
-  color: #e5e7eb;
+  letter-spacing: 0.01em;
+  color: ${({ theme }) => theme.colors.ink};
 `;
 
 const Input = styled.input`
+  display: block;
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: #0a0a0a !important;
-  background-color: #0a0a0a !important;
-  color: #fff;
-  outline: none;
-  box-sizing: border-box;
+  height: 48px;
+  padding: 0 14px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.line};
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 15px;
+  font-weight: 500;
+
+  &::placeholder { color: ${({ theme }) => theme.colors.muted}; }
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.colors.ink};
+    box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.sun};
+  }
 `;
 
 const Textarea = styled.textarea`
+  display: block;
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: #0a0a0a !important;
-  background-color: #0a0a0a !important;
-  color: #fff;
-  outline: none;
-  min-height: 90px;
+  min-height: 118px;
   resize: vertical;
-  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.line};
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  font-family: inherit;
+
+  &::placeholder { color: ${({ theme }) => theme.colors.muted}; }
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.colors.ink};
+    box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.sun};
+  }
 `;
 
 const Actions = styled.div`
   display: flex;
-  justify-content: flex-end;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 20px;
+
+  > * { flex: 1; }
 `;
 
 const Button = styled.button`
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #fff;
-  background: linear-gradient(135deg, #181818 0%, #121212 100%);
+  height: 52px;
+  padding: 0 18px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.sunTint}; }
+  &:active:not(:disabled) { transform: scale(0.98); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
 const Primary = styled(Button)`
-  border-color: rgba(29,185,84,0.6);
-  background: linear-gradient(135deg, #1DB954 0%, #19a64c 100%);
+  background: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
+  border-color: ${({ theme }) => theme.colors.ink};
+
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.inkSoft}; }
 `;
 
 const SuccessNote = styled.div`
-  margin-top: 12px;
-  color: #bbf7d0;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.sunTint};
+  border: 1.5px solid ${({ theme }) => theme.colors.sunDeep};
+  font-size: 14px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.ink};
+`;
+
+const ErrorNote = styled(SuccessNote)`
+  background: ${({ theme }) => theme.colors.red};
+  border-color: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
 `;
 
 const ReportBugModal = ({ onClose }) => {
@@ -170,7 +230,7 @@ const ReportBugModal = ({ onClose }) => {
 
   const modalContent = (
     <Overlay onClick={onClose}>
-      <Card onClick={(e) => e.stopPropagation()} style={{ background: '#000', opacity: 1 }}>
+      <Card onClick={(e) => e.stopPropagation()}>
         <Title>Report a Bug / Request a Feature</Title>
         <Desc>Help us improve. Tell us where you saw the issue and what happened.</Desc>
 
@@ -197,9 +257,7 @@ const ReportBugModal = ({ onClose }) => {
           </Actions>
         </form>
 
-        {error && (
-          <SuccessNote style={{ color: '#fecaca' }}>{error}</SuccessNote>
-        )}
+        {error && <ErrorNote>{error}</ErrorNote>}
         {submitted && (
           <SuccessNote>
             Thank you! We received your report/suggestions. We'll review it and prioritize your requested features.

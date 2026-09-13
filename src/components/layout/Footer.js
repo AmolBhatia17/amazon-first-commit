@@ -2,121 +2,96 @@ import React from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 
-const FooterContainer = styled.footer`
+const FooterOuter = styled.footer`
   width: 100%;
-  margin-top: auto;
-  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, #0a0a0a 15%, #000 100%);
-  color: #F8FAFC;
-  padding: 2rem 0 1.75rem;
-  text-align: center;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  border-top: 1px solid rgba(29, 185, 84, 0.15);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
+  padding: 24px 24px 28px;
+  display: flex;
+  justify-content: center;
 
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 80%;
-    max-width: 200px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(29, 185, 84, 0.4), transparent);
-    opacity: 0.8;
+  @media (max-width: 768px) {
+    padding: 16px 16px 20px;
   }
 `;
 
-const FooterContent = styled.div`
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 2rem;
+const FooterCard = styled.div`
+  width: 100%;
+  max-width: 1400px;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 20px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
   @media (max-width: 768px) {
-    padding: 0 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 20px;
+    border-radius: ${({ theme }) => theme.radii.panel};
   }
 `;
 
 const FooterLinks = styled.nav`
   display: flex;
-  justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.25rem 1.25rem;
-  margin-bottom: 1.25rem;
-  @media (max-width: 768px) {
-    gap: 0.2rem 0.75rem;
-  }
+  gap: 2px;
 `;
 
 const FooterLink = styled(Link)`
-  color: #a0a0a0;
+  color: ${({ theme }) => theme.colors.ink};
   text-decoration: none;
-  font-size: 0.95rem;
-  font-weight: 500;
-  transition: color 0.2s, transform 0.2s;
-  padding: 0.4rem 0.75rem;
-  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
 
-  &:hover {
-    color: #1DB954;
-    background: rgba(29, 185, 84, 0.08);
-    transform: translateY(-1px);
-  }
-  @media (max-width: 768px) {
-    font-size: 0.85rem;
-    padding: 0.35rem 0.6rem;
-  }
+  &:hover { background: ${({ theme }) => theme.colors.sunTint}; }
 `;
 
 const Separator = styled.span`
-  color: rgba(255,255,255,0.2);
-  font-weight: 200;
+  color: ${({ theme }) => theme.colors.line};
+  font-size: 14px;
   user-select: none;
-  @media (max-width: 768px) {
-    font-size: 0.75rem;
-  }
 `;
 
-const Copyright = styled.div`
-  color: #666;
-  font-size: 0.9rem;
-  font-weight: 400;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  @media (max-width: 768px) {
-    font-size: 0.82rem;
-  }
+const Copyright = styled.p`
+  color: ${({ theme }) => theme.colors.muted};
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
 `;
 
-const BrandName = styled.span`
-  color: #1DB954;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-`;
+const links = [
+  { to: '/privacy', label: 'Privacy' },
+  { to: '/terms', label: 'Terms' },
+  { to: '/about', label: 'About' },
+  { to: '/contact', label: 'Contact' },
+  { to: '/help', label: 'Help' },
+];
 
 function Footer() {
   return (
-    <FooterContainer>
-      <FooterContent>
+    <FooterOuter>
+      <FooterCard>
         <FooterLinks>
-          <FooterLink to="/privacy">Privacy</FooterLink>
-          <Separator>·</Separator>
-          <FooterLink to="/terms">Terms</FooterLink>
-          <Separator>·</Separator>
-          <FooterLink to="/about">About</FooterLink>
-          <Separator>·</Separator>
-          <FooterLink to="/contact">Contact</FooterLink>
-          <Separator>·</Separator>
-          <FooterLink to="/help">Help</FooterLink>
+          {links.map((link, i) => (
+            <React.Fragment key={link.to}>
+              {i > 0 && <Separator>|</Separator>}
+              <FooterLink to={link.to}>{link.label}</FooterLink>
+            </React.Fragment>
+          ))}
         </FooterLinks>
         <Copyright>
-          © 2025 <BrandName>UniTalks</BrandName>. All rights reserved.
+          © {new Date().getFullYear()} UniTalks — Safe &amp; Anonymous Student Chat
         </Copyright>
-      </FooterContent>
-    </FooterContainer>
+      </FooterCard>
+    </FooterOuter>
   );
 }
 

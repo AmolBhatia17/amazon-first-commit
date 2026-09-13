@@ -15,7 +15,7 @@ import TextChat from './components/pages/TextChat';
 const AppBackground = styled.div`
   height: 100vh;
   width: 100%;
-  background: ${props => props.theme.colors.appBg};
+  background: ${({ theme, $dark }) => ($dark ? theme.colors.ink : theme.colors.sun)};
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -35,9 +35,11 @@ const MainContent = styled.main`
 function AppContent() {
   const location = useLocation();
   const isScrollableRoute = location.pathname === '/' || location.pathname === '/start-chat';
+  // Video and voice sit on the dark ink canvas; everything else on amber paper.
+  const isDarkRoute = location.pathname === '/video' || location.pathname === '/voice';
 
   return (
-    <AppBackground>
+    <AppBackground $dark={isDarkRoute} className={isDarkRoute ? 'bg-graph-grid-dark' : 'bg-graph-grid'}>
       <MainContent $isScrollableRoute={isScrollableRoute}>
             <Routes>
               <Route path="/" element={<Homepage />} />

@@ -19,121 +19,96 @@ if (typeof window !== 'undefined') {
   window.process = proc;
 }
 
+/* ── Amber Paper: video chat (dark ink canvas) ──────────────────────── */
+
 const VideoChatContainer = styled.div`
   height: 100vh;
   max-width: 100vw;
-  background: ${({ theme }) => theme.colors.appBg};
-  color: #F8FAFC;
+  background: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
   overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   display: flex;
   flex-direction: column;
-  position: relative;
-  z-index: 0;
 `;
 
 const MainContent = styled.div`
-  height: calc(100vh - 64px);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  margin-top: 70px;
-  position: relative;
-  overflow: hidden;
-  z-index: 1;
+  padding: 88px 20px 16px;
+
+  @media (max-width: 900px) { padding: 60px 0 0; }
 `;
 
+/* ── Video area ─────────────────────────────────────────────────────── */
+/* Desktop: video + control bar on the left, chat slate on the right.    */
+/* Mobile:  video fills the screen and the chat becomes an overlay sheet.*/
+
 const VideoSection = styled.div`
-  display: flex;
-  height: 100%;
-  gap: 0;
-  position: relative;
-  
-  @media (max-width: 768px) {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px 16px;
+
+  @media (max-width: 1100px) { grid-template-columns: 1fr 340px; }
+  @media (max-width: 900px) {
+    display: flex;
     flex-direction: column;
-    ${({ $isFullScreenMobile }) =>
-      $isFullScreenMobile &&
-      `
-        height: calc(100vh - 64px);
-      `}
+    position: relative;
+    gap: 0;
   }
 `;
 
 const VideoFeedsContainer = styled.div`
-  width: 35%;
-  display: flex;
-  flex-direction: column;
-  background: #1a1a1a;
-  
-  @media (max-width: 768px) {
-    width: 100%;
-    ${({ $isFullScreenMobile }) =>
-      $isFullScreenMobile
-        ? `
-          height: 100%;
-          flex-direction: column;
-          position: relative;
-        `
-        : `
-          height: 40%;
-          flex-direction: row;
-        `}
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  border-radius: ${({ theme }) => theme.radii.card};
+  overflow: hidden;
+
+  /* Mobile: stop at the chat sheet's top edge so the floating control
+     bar at the bottom of the video is not hidden behind the sheet. */
+  @media (max-width: 900px) {
+    flex: 0 0 46%;
+    border-radius: 0;
   }
 `;
 
 const VideoFeed = styled.div`
-  flex: 1;
-  background: #0f0f0f;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  min-height: 200px;
-  
-  @media (min-width: 769px) {
-    border: 2px solid #1DB954;
-    border-radius: 8px;
-    margin: 4px;
-    
-    &:last-child {
-      border-bottom: 2px solid #1DB954;
-    }
-  }
-  
-  @media (max-width: 768px) {
-    min-height: 150px;
-    
-    &:last-child {
-      border-right: none;
-    }
+  position: ${({ $isRemote }) => ($isRemote ? 'relative' : 'absolute')};
+  overflow: hidden;
+  background: #000;
 
-    ${({ $isRemote }) =>
-      !$isRemote &&
-      `
-        border: 2px solid rgba(29,185,84,0.9);
-        box-shadow: 0 0 10px rgba(29,185,84,0.6);
-      `}
+  ${({ $isRemote, theme }) => $isRemote ? `
+    width: 100%;
+    height: 100%;
+    border: 1.5px solid rgba(255,255,255,0.16);
+    border-radius: ${theme.radii.card};
+  ` : `
+    right: 16px;
+    bottom: 96px;
+    width: 168px;
+    height: 118px;
+    z-index: 6;
+    border: 2px solid ${theme.colors.paper};
+    border-radius: ${theme.radii.panel};
+  `}
 
-    ${({ $isFullScreenMobile, $isRemote }) =>
-      $isFullScreenMobile &&
-      $isRemote &&
-      `
-        flex: 1;
-      `}
-
-    ${({ $isFullScreenMobile, $isRemote }) =>
-      $isFullScreenMobile &&
-      !$isRemote &&
-      `
-        position: absolute;
-        width: 120px;
-        height: 170px;
-        right: 12px;
-        bottom: 110px;
-        border-radius: 10px;
-        overflow: hidden;
-        z-index: 3;
-        box-shadow: 0 6px 16px rgba(0,0,0,0.6);
-      `}
+  @media (max-width: 900px) {
+    ${({ $isRemote, theme }) => $isRemote ? `
+      border: none;
+      border-radius: 0;
+    ` : `
+      right: 12px;
+      bottom: 78px;
+      width: 108px;
+      height: 148px;
+      border-radius: 16px;
+    `}
   }
 `;
 
@@ -141,6 +116,7 @@ const VideoElement = styled.video`
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
   background: #000;
 `;
 
@@ -149,440 +125,309 @@ const VideoPlaceholder = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #666;
-  font-size: 0.9rem;
-  text-align: center;
-  padding: 20px;
-  
-  svg {
-    font-size: 2rem;
-    margin-bottom: 10px;
-    color: #1DB954;
-  }
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  background: ${({ theme }) => theme.colors.inkSoft};
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 15px;
+  font-weight: 700;
+
+  svg { font-size: 34px; }
 `;
 
 const VideoLabel = styled.div`
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  background: rgba(0,0,0,0.7);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+
+  &::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: ${({ theme }) => theme.colors.green};
+  }
 `;
 
 const RemoteBufferOverlay = styled.div`
   position: absolute;
   inset: 0;
+  z-index: 7;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.75));
-  z-index: 2;
+  background: rgba(28, 28, 30, 0.72);
 `;
 
 const VideoOverlayButton = styled.button`
   position: absolute;
-  bottom: 10px;
-  right: 10px;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-  display: flex;
+  z-index: 8;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.2rem;
-  
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-    transform: translateY(-1px);
-  }
-  
-  &.active {
-    background: #1DB954;
-    color: #000;
-  }
-  
-  @media (max-width: 768px) {
-    width: 40px;
-    height: 40px;
-    font-size: 1rem;
-    bottom: 8px;
-    right: 8px;
-  }
+  transition: transform 0.12s ease;
+
+  &:active { transform: scale(0.96); }
 `;
 
+/* Floating grouped toolbar over the video on mobile */
 const MobileVideoControls = styled.div`
   display: none;
-  
-  @media (max-width: 768px) {
+
+  @media (max-width: 900px) {
     display: flex;
     position: absolute;
-    bottom: 50px;
     left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
-    width: 100%;
-    max-width: 500px;
-    padding: 0 30px;
-    justify-content: ${({ $hasSession }) => ($hasSession ? 'space-between' : 'center')};
-    gap: 12px;
+    z-index: 9;
     align-items: center;
-    z-index: 4;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 999px;
+    background: ${({ theme }) => theme.colors.inkSoft};
+    border: 1.5px solid rgba(255, 255, 255, 0.18);
   }
 `;
 
 const MobileControlButton = styled.button`
-  padding: 12px 40px;
+  height: 48px;
+  min-width: 48px;
+  padding: 0 16px;
   border-radius: 999px;
-  border: none;
-  color: #fff;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.3rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  }
-  
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: ${({ theme }) => theme.colors.paper};
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:active { transform: scale(0.94); }
+
   &.start {
-    background: linear-gradient(135deg, #1DB954, #19a64c);
-    
-    &:hover {
-      background: linear-gradient(135deg, #20e06b, #1db954);
-    }
+    background: ${({ theme }) => theme.colors.sun};
+    color: ${({ theme }) => theme.colors.ink};
+    padding: 0 22px;
   }
-  
-  &.stop {
-    background: linear-gradient(135deg, #DC3545, #c82333);
-    
-    &:hover {
-      background: linear-gradient(135deg, #e74c5c, #d63031);
-    }
-  }
-  
-  &.skip {
-    background: linear-gradient(135deg, #1DB954, #19a64c);
-    
-    &:hover {
-      background: linear-gradient(135deg, #20e06b, #1db954);
-    }
-  }
-  
-  &.fun {
-    background: rgba(245, 158, 11, 0.25);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.5);
-    
-    &:hover {
-      background: rgba(245, 158, 11, 0.4);
-    }
-  }
+  &.stop { background: ${({ theme }) => theme.colors.red}; }
+  &.skip { background: ${({ theme }) => theme.colors.paper}; color: ${({ theme }) => theme.colors.ink}; }
+  &.fun  { background: ${({ theme }) => theme.colors.sun}; color: ${({ theme }) => theme.colors.ink}; }
+  &.danger { background: ${({ theme }) => theme.colors.red}; }
 `;
 
 const FunMobileControls = styled.div`
   display: none;
-  
-  @media (max-width: 768px) {
+
+  @media (max-width: 900px) {
     display: flex;
     position: absolute;
-    bottom: 8px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 12px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    z-index: 9;
     gap: 8px;
-    align-items: center;
-    z-index: 5;
   }
 `;
 
 const FunMobileButton = styled.button`
-  width: 38px;
-  height: 38px;
+  height: 48px;
+  padding: 0 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.25);
-  background: rgba(0,0,0,0.7);
-  color: #fff;
-  display: flex;
+  background: ${({ theme }) => theme.colors.sun};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.1rem;
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-  }
-  
-  &.danger {
-    border-color: rgba(239,68,68,0.7);
-  }
-  
-  &.primary {
-    border-color: rgba(29,185,84,0.8);
-  }
+  transition: transform 0.12s ease;
+
+  &:active { transform: scale(0.95); }
 `;
 
 const Watermark = styled.div`
   position: absolute;
-  bottom: 10px;
-  right: 10px;
-  display: flex;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(0,0,0,0.7);
-  padding: 6px 10px;
-  border-radius: 6px;
-  backdrop-filter: blur(5px);
-  border: 1px solid rgba(29,185,84,0.3);
-  
-  @media (max-width: 768px) {
-    bottom: 8px;
-    right: 8px;
-    padding: 4px 8px;
-    gap: 4px;
-  }
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(28, 28, 30, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+
+  @media (max-width: 560px) { display: none; }
 `;
 
 const WatermarkLogo = styled.img`
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
+  height: 18px;
+  width: auto;
   object-fit: contain;
-  
-  @media (max-width: 768px) {
-    width: 14px;
-    height: 14px;
-  }
 `;
 
-const WatermarkText = styled.div`
-  color: #1DB954;
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  
-  @media (max-width: 768px) {
-    font-size: 0.7rem;
-  }
+const WatermarkText = styled.span`
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: ${({ theme }) => theme.colors.paper};
 `;
+
+/* ── Chat column (the white paper slate) ────────────────────────────── */
 
 const ChatSection = styled.div`
-  flex: 1;
-  background: #000000;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  position: relative;
-  min-height: 0;
-  padding-bottom: 80px;
-  
-  @media (max-width: 768px) {
-    ${({ $isFullScreenMobile }) =>
-      $isFullScreenMobile
-        ? `
-          display: none;
-        `
-        : `
-          height: 60%;
-        `}
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: ${({ theme }) => theme.radii.card};
+  overflow: hidden;
+
+  @media (max-width: 900px) {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: ${({ $mobileChatTop }) => ($mobileChatTop != null ? `${$mobileChatTop}px` : '46%')};
+    z-index: 12;
+    border: none;
+    border-top: 1.5px solid ${({ theme }) => theme.colors.ink};
+    border-radius: ${({ theme }) => theme.radii.card} ${({ theme }) => theme.radii.card} 0 0;
   }
 `;
 
 const ChessArea = styled.div`
-  flex: 1;
-  min-height: 0;
+  padding: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  padding: 16px;
-  background: #0d0d0d;
+  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
 `;
 
+/* ── Listen Along music player ──────────────────────────────────────── */
+
 const MusicPlayerContainer = styled.div`
-  width: 100%;
-  max-width: min(90vw, 600px);
-  max-height: 100%;
+  padding: 14px;
+  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
+  background: ${({ theme }) => theme.colors.paperAlt};
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  color: #e5e7eb;
-  /* Match overall app / chess theme: dark slate with subtle green glow */
-  background: radial-gradient(circle at top, rgba(34,197,94,0.18) 0, rgba(15,23,42,0.96) 40%, rgba(3,7,18,0.98) 100%);
-  border-radius: 18px;
-  padding: 16px 18px 18px;
-  border: 1px solid rgba(34,197,94,0.35);
-  box-shadow:
-    0 0 0 1px rgba(15,23,42,1),
-    0 16px 40px rgba(0,0,0,0.75),
-    0 0 32px rgba(34,197,94,0.22);
+  gap: 12px;
+  max-height: 58%;
   overflow-y: auto;
-  overflow-x: hidden;
-  min-height: 0;
-  
-  @media (max-width: 768px) {
-    max-width: 100%;
-    padding: 12px 12px 14px;
-    gap: 12px;
-    border-radius: 14px;
-    box-shadow:
-      0 0 0 1px rgba(15,23,42,1),
-      0 10px 26px rgba(0,0,0,0.7),
-      0 0 22px rgba(34,197,94,0.18);
-  }
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.25);
-    border-radius: 3px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background: rgba(34,197,94,0.6);
-    border-radius: 3px;
-    
-    &:hover {
-      background: rgba(34,197,94,0.8);
-    }
-  }
 `;
 
 const MusicSearchSection = styled.div`
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
 `;
 
 const MusicTrackInput = styled.input`
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(148,163,184,0.4);
-  background: rgba(0,0,0,0.4);
-  color: #e5e7eb;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
-  
-  &:focus {
-    outline: none;
-    border-color: rgba(29,185,84,0.6);
-    box-shadow: 0 0 0 3px rgba(29,185,84,0.1);
-  }
-  
-  &::placeholder {
-    color: #6b7280;
-  }
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 14.5px;
+  font-weight: 500;
+
+  &::placeholder { color: ${({ theme }) => theme.colors.muted}; }
+  &:focus { outline: 2px solid ${({ theme }) => theme.colors.sun}; outline-offset: 2px; }
 `;
 
 const MusicStatusText = styled.div`
-  font-size: 0.85rem;
-  color: #9ca3af;
-  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.muted};
 `;
 
 const MusicPlayerMain = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  flex-shrink: 0;
-  
-  @media (max-width: 768px) {
-    gap: 12px;
-  }
+  gap: 12px;
+  align-items: center;
 `;
 
 const MusicArtworkSection = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
   flex-shrink: 0;
-  
-  @media (max-width: 768px) {
-    gap: 8px;
-  }
 `;
 
 const MusicArtwork = styled.img`
-  width: min(60vw, 240px);
-  height: min(60vw, 240px);
-  max-width: 100%;
-  aspect-ratio: 1;
-  border-radius: 12px;
+  width: 74px;
+  height: 74px;
+  border-radius: ${({ theme }) => theme.radii.panel};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
   object-fit: cover;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  border: 2px solid rgba(29,185,84,0.3);
-  transition: transform 0.3s ease;
-  flex-shrink: 0;
-  
-  &:hover {
-    transform: scale(1.02);
-  }
-  
-  @media (max-width: 768px) {
-    width: min(50vw, 180px);
-    height: min(50vw, 180px);
-    border-radius: 10px;
-  }
+  display: block;
+  background: ${({ theme }) => theme.colors.sunTint};
 `;
 
 const MusicInfoSection = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
+  flex: 1;
+  min-width: 0;
 `;
 
-const MusicTitle = styled.h3`
-  font-size: clamp(1rem, 4vw, 1.5rem);
-  font-weight: 700;
-  color: #ffffff;
-  margin: 0;
-  line-height: 1.3;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  
-  @media (max-width: 768px) {
-    font-size: clamp(0.9rem, 4vw, 1.2rem);
-  }
+const MusicTitle = styled.div`
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: ${({ theme }) => theme.colors.ink};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const MusicArtist = styled.div`
-  font-size: clamp(0.85rem, 3vw, 1rem);
-  color: #9ca3af;
-  font-weight: 500;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  
-  @media (max-width: 768px) {
-    font-size: clamp(0.75rem, 3vw, 0.9rem);
-  }
+  font-size: 13px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.muted};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const MusicDurationText = styled.div`
-  font-size: clamp(0.7rem, 2.5vw, 0.85rem);
-  color: #6b7280;
-  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.muted};
+  font-variant-numeric: tabular-nums;
 `;
 
 const MusicProgressSection = styled.div`
@@ -594,578 +439,308 @@ const MusicProgressSection = styled.div`
 const MusicEqualizer = styled.div`
   display: flex;
   align-items: flex-end;
-  justify-content: center;
-  gap: 4px;
-  height: 20px;
-  margin-bottom: 4px;
+  gap: 3px;
+  height: 24px;
 `;
 
 const eqBarPulse = keyframes`
-  0% { transform: scaleY(0.4); opacity: 0.9; }
-  25% { transform: scaleY(1); opacity: 1; }
-  50% { transform: scaleY(0.5); opacity: 0.8; }
-  75% { transform: scaleY(0.9); opacity: 1; }
-  100% { transform: scaleY(0.4); opacity: 0.9; }
+  0%, 100% { height: 25%; }
+  50%      { height: 100%; }
 `;
 
 const MusicEqualizerBar = styled.div`
   width: 4px;
-  border-radius: 999px;
-  background: linear-gradient(to top, #22c55e, #bbf7d0);
-  transform-origin: bottom;
-  opacity: 0.85;
-  ${({ $delay = 0 }) => css`
-    animation: ${eqBarPulse} 1.1s ease-in-out ${$delay}ms infinite;
-  `}
-  ${({ $isPlaying }) => !$isPlaying && 'animation-play-state: paused; transform: scaleY(0.35); opacity: 0.6;'}
+  border-radius: 2px;
+  background: ${({ theme }) => theme.colors.ink};
+  height: 25%;
+  animation: ${eqBarPulse} 0.9s ease-in-out infinite;
+  animation-delay: ${({ $delay }) => $delay || '0s'};
+  animation-play-state: ${({ $isPlaying }) => ($isPlaying ? 'running' : 'paused')};
 `;
 
 const MusicProgressRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 `;
 
 const MusicProgressInput = styled.input`
   flex: 1;
+  min-width: 0;
+  -webkit-appearance: none;
   appearance: none;
   height: 6px;
   border-radius: 999px;
-  background: rgba(31,41,55,0.9);
-  outline: none;
+  background: ${({ theme }) => theme.colors.line};
   cursor: pointer;
-  transition: height 0.2s ease;
-
-  &:hover {
-    height: 8px;
-  }
 
   &::-webkit-slider-thumb {
-    appearance: none;
+    -webkit-appearance: none;
     width: 16px;
     height: 16px;
-    border-radius: 50%;
-    background: #1DB954;
-    box-shadow: 0 0 8px rgba(29,185,84,0.8);
-    cursor: grab;
-    
-    &:active {
-      cursor: grabbing;
-    }
+    border-radius: 999px;
+    background: ${({ theme }) => theme.colors.ink};
+    border: 2px solid ${({ theme }) => theme.colors.paper};
+    cursor: pointer;
   }
 
   &::-moz-range-thumb {
     width: 16px;
     height: 16px;
-    border-radius: 50%;
-    background: #1DB954;
-    box-shadow: 0 0 8px rgba(29,185,84,0.8);
-    border: none;
-    cursor: grab;
-    
-    &:active {
-      cursor: grabbing;
-    }
+    border-radius: 999px;
+    background: ${({ theme }) => theme.colors.ink};
+    border: 2px solid ${({ theme }) => theme.colors.paper};
+    cursor: pointer;
   }
 `;
 
-const MusicTimeText = styled.div`
-  font-size: 0.85rem;
-  color: #9ca3af;
-  min-width: 80px;
-  text-align: center;
+const MusicTimeText = styled.span`
+  font-size: 11.5px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.muted};
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 `;
 
 const MusicControlsRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  flex-shrink: 0;
-  
-  @media (max-width: 768px) {
-    gap: 12px;
-  }
+  gap: 10px;
 `;
 
 const MusicControlButton = styled.button`
-  width: clamp(40px, 10vw, 50px);
-  height: clamp(40px, 10vw, 50px);
-  border-radius: 50%;
-  border: 2px solid rgba(148,163,184,0.4);
-  background: rgba(0,0,0,0.5);
-  color: #e5e7eb;
-  display: flex;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 17px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: clamp(1rem, 3vw, 1.3rem);
-  flex-shrink: 0;
-  
-  &:hover:not(:disabled) {
-    transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 4px 12px rgba(29,185,84,0.4);
-    border-color: rgba(29,185,84,0.8);
-    background: rgba(29,185,84,0.1);
-  }
-  
-  &:active:not(:disabled) {
-    transform: translateY(0) scale(1);
-  }
-  
-  &:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-  
-  &.play-pause {
-    width: clamp(52px, 12vw, 64px);
-    height: clamp(52px, 12vw, 64px);
-    font-size: clamp(1.2rem, 3.5vw, 1.6rem);
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.6);
-    
-    &:hover:not(:disabled) {
-      background: rgba(29,185,84,0.3);
-      box-shadow: 0 6px 20px rgba(29,185,84,0.5);
-    }
-  }
-  
-  @media (max-width: 768px) {
-    width: clamp(36px, 8vw, 44px);
-    height: clamp(36px, 8vw, 44px);
-    font-size: clamp(0.9rem, 2.5vw, 1.1rem);
-    
-    &.play-pause {
-      width: clamp(48px, 10vw, 56px);
-      height: clamp(48px, 10vw, 56px);
-      font-size: clamp(1.1rem, 3vw, 1.3rem);
-    }
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:active:not(:disabled) { transform: scale(0.94); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  &.primary {
+    width: 52px;
+    height: 52px;
+    font-size: 21px;
+    background: ${({ theme }) => theme.colors.ink};
+    color: ${({ theme }) => theme.colors.paper};
   }
 `;
 
 const MusicLyricsSection = styled.div`
-  max-height: min(30vh, 200px);
+  max-height: 132px;
   overflow-y: auto;
-  padding: 12px;
-  background: rgba(0,0,0,0.3);
-  border-radius: 10px;
-  border: 1px solid rgba(29,185,84,0.2);
-  flex-shrink: 0;
-  
-  @media (max-width: 768px) {
-    max-height: min(25vh, 150px);
-    padding: 10px;
-    border-radius: 8px;
-  }
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.2);
-    border-radius: 3px;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background: rgba(29,185,84,0.5);
-    border-radius: 3px;
-    
-    &:hover {
-      background: rgba(29,185,84,0.7);
-    }
-  }
+  padding: 10px 12px;
+  border-radius: ${({ theme }) => theme.radii.panel};
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1px solid ${({ theme }) => theme.colors.line};
 `;
 
 const MusicLyricsText = styled.div`
-  font-size: clamp(0.8rem, 2.5vw, 0.95rem);
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.6;
-  color: #d1d5db;
-  white-space: pre-line;
-  text-align: center;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  
-  @media (max-width: 768px) {
-    line-height: 1.5;
-  }
-  
-  &:empty::before {
-    content: 'No lyrics available';
-    color: #6b7280;
-    font-style: italic;
-  }
+  color: ${({ theme }) => theme.colors.muted};
+  white-space: pre-wrap;
 `;
 
-// Old search result styles retained for future expansion if needed
+/* ── Chat header ────────────────────────────────────────────────────── */
 
 const ChatHeader = styled.div`
-  padding: 20px;
-  border-bottom: none;
-  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
 `;
 
 const Logo = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  
-  img {
-    height: 40px;
-    width: 40px;
-    border-radius: 8px;
-  }
+  gap: 8px;
+  min-width: 0;
 `;
 
 const BrandText = styled.span`
-  color: #ffffff;
-  font-family: 'Press Start 2P', cursive, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  font-size: 18px;
-  line-height: 1;
-  letter-spacing: 0.5px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: ${({ theme }) => theme.colors.ink};
 `;
 
-
 const StatusMessage = styled.div`
-  color: #F8FAFC;
-  font-size: 1.1rem;
-  margin-bottom: 20px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.sunTint};
+  border: 1px solid ${({ theme }) => theme.colors.sunDeep};
+  font-size: 12px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.ink};
 `;
 
 const NewChatButton = styled.button`
-  background: linear-gradient(135deg, #1DB954, #19a64c);
-  color: #0b0b0f;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
   border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
+  font-size: 14px;
   font-weight: 700;
-  font-size: 1rem;
   cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 15px;
-  width: 100%;
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(29,185,84,0.3);
-  }
-  
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
+  transition: transform 0.12s ease;
+
+  &:active { transform: scale(0.96); }
 `;
 
 const InterestSection = styled.div`
-  text-align: center;
-  margin-bottom: 20px;
-`;
-
-const InterestText = styled.div`
-  color: #B3B3B3;
-  font-size: 0.9rem;
-  margin-bottom: 10px;
-`;
-
-const LanguageLink = styled.button`
-  background: none;
-  border: none;
-  color: #1DB954;
-  text-decoration: none;
-  font-size: 0.9rem;
-  cursor: pointer;
-  
-  &:hover {
-    text-decoration: underline;
-  }
-`;
-
-const BottomControlsSection = styled.div`
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 80px;
-  background: rgba(0,0,0,0.9);
   display: flex;
   align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
+`;
+
+const InterestText = styled.span`
+  font-size: 12.5px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.muted};
+`;
+
+const LanguageLink = styled.a`
+  font-size: 12.5px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.blue};
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; }
+`;
+
+/* ── Desktop control bar ────────────────────────────────────────────── */
+
+const BottomControlsSection = styled.div`
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
   justify-content: center;
-  backdrop-filter: blur(10px);
-  z-index: 10;
-  
-  @media (max-width: 768px) {
-    display: none;
-  }
+  flex-shrink: 0;
+
+  @media (max-width: 900px) { display: none; }
 `;
 
 const ChatControls = styled.div`
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 0 20px;
-  
-  @media (max-width: 768px) {
-    padding: 0 10px;
-  }
+  gap: 8px;
+  padding: 8px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.inkSoft};
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
 `;
 
-const ChatControlsCentered = styled.div`
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-`;
-
-const ChatControlsStartRight = styled.div`
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding-right: 50px;
-  @media (max-width: 768px) {
-    justify-content: center;
-    padding-right: 0;
-  }
-`;
-
-const ChatControlsRight = styled.div`
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  
-  @media (max-width: 768px) {
-    gap: 10px;
-  }
-`;
-
-const ControlButton = styled.button`
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.2rem;
-  
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-    transform: translateY(-1px);
-  }
-  
-  &.active {
-    background: #1DB954;
-    color: #000;
-  }
-  
-  &.danger {
-    background: #ff4444;
-    color: #fff;
-    
-    &:hover {
-      background: #ff6666;
-    }
-  }
-`;
+const ChatControlsCentered = styled(ChatControls)``;
+const ChatControlsStartRight = styled(ChatControls)``;
+const ChatControlsRight = styled(ChatControls)``;
 
 const ButtonIcon = styled.span`
   display: inline-flex;
   align-items: center;
-  margin-right: 8px;
-  font-size: 1.1em;
+  font-size: 17px;
 `;
 
-const StartChatButton = styled.button`
+const ControlButton = styled.button`
+  height: 48px;
+  min-width: 48px;
+  padding: 0 20px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 38px;
-  min-width: 140px;
-  border-radius: 999px;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
   border: none;
-  font-weight: 600;
-  font-size: 1.15rem;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: linear-gradient(135deg, #1DB954 0%, #169c46 100%);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(29, 185, 84, 0.35);
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(29, 185, 84, 0.45);
-    background: linear-gradient(135deg, #22e06b 0%, #1DB954 100%);
-  }
-  
-  &:active {
-    transform: translateY(0);
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px 28px;
-    min-width: 120px;
-    font-size: 1.05rem;
-  }
+  background: rgba(255, 255, 255, 0.12);
+  color: ${({ theme }) => theme.colors.paper};
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:hover:not(:disabled) { background: rgba(255, 255, 255, 0.2); }
+  &:active:not(:disabled) { transform: scale(0.96); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
 `;
 
-const StopButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 38px;
-  min-width: 100px;
-  border-radius: 999px;
-  border: 2px solid #ef4444;
-  font-weight: 600;
-  font-size: 1.15rem;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: #000;
-  color: #ef4444;
-  
-  &:hover {
-    transform: translateY(-2px);
-    background: #111;
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
-  }
-  
-  &:active {
-    transform: translateY(0);
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px 28px;
-    min-width: 88px;
-    font-size: 1.05rem;
-  }
+const StartChatButton = styled(ControlButton)`
+  background: ${({ theme }) => theme.colors.sun};
+  color: ${({ theme }) => theme.colors.ink};
+  padding: 0 26px;
+
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.sunDeep}; }
 `;
 
-const SkipButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 38px;
-  min-width: 100px;
-  border-radius: 999px;
-  border: 2px solid rgba(29, 185, 84, 0.6);
-  font-weight: 600;
-  font-size: 1.15rem;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: rgba(29, 185, 84, 0.15);
-  color: #1DB954;
-  
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    background: rgba(29, 185, 84, 0.25);
-    box-shadow: 0 4px 14px rgba(29, 185, 84, 0.3);
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px 28px;
-    min-width: 88px;
-    font-size: 1.05rem;
-  }
+const StopButton = styled(ControlButton)`
+  background: ${({ theme }) => theme.colors.red};
+  color: ${({ theme }) => theme.colors.paper};
+
+  &:hover:not(:disabled) { background: #E5342A; }
 `;
 
-const FunButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 38px;
-  min-width: 90px;
-  border-radius: 999px;
-  border: 2px solid rgba(245, 158, 11, 0.7);
-  font-weight: 600;
-  font-size: 1.15rem;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-  
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    background: rgba(245, 158, 11, 0.35);
-    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
-  }
-  
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px 24px;
-    min-width: 80px;
-    font-size: 1.05rem;
-  }
+const SkipButton = styled(ControlButton)`
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.sunTint}; }
 `;
+
+const FunButton = styled(ControlButton)`
+  background: ${({ theme }) => theme.colors.sun};
+  color: ${({ theme }) => theme.colors.ink};
+
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.sunDeep}; }
+`;
+
+/* ── FUN menu ───────────────────────────────────────────────────────── */
 
 const MobileFunWrap = styled.div`
-  display: none;
-  align-items: center;
-  flex-shrink: 0;
-  
-  @media (max-width: 768px) {
-    display: flex;
-  }
+  position: relative;
 `;
 
 const FunMenuWrap = styled.div`
   position: relative;
-  display: inline-flex;
+`;
+
+const popIn = keyframes`
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 `;
 
 const FunMenuPopover = styled.div`
   position: absolute;
   bottom: calc(100% + 10px);
-  left: calc(50% + 40px);
+  left: 50%;
   transform: translateX(-50%);
-  min-width: 180px;
-  background: rgba(0, 0, 0, 0.96);
-  border: 1px solid rgba(29, 185, 84, 0.4);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  padding: 8px 0;
-  z-index: 20;
-  backdrop-filter: blur(12px);
-  
-  @media (max-width: 768px) {
-    bottom: calc(100% + 25px);
-    min-width: 160px;
-    left: calc(50% + 50px);
-    transform: translateX(-50%);
-    padding: 6px 0;
-  }
+  min-width: 230px;
+  z-index: 40;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.panel};
+  padding: 8px;
+  box-shadow: 0 4px 0 ${({ theme }) => theme.colors.ink};
+  animation: ${popIn} 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
 `;
 
 const FunMenuItem = styled.button`
@@ -1173,401 +748,340 @@ const FunMenuItem = styled.button`
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 11px 12px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: transparent;
   border: none;
-  background: none;
-  color: #F8FAFC;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 14.5px;
+  font-weight: 700;
   text-align: left;
-  transition: background 0.2s ease;
-  
-  &:hover {
-    background: rgba(29, 185, 84, 0.15);
-    color: #1DB954;
-  }
-  
-  &:active {
-    background: rgba(29, 185, 84, 0.25);
-  }
-  
-  @media (max-width: 768px) {
-    padding: 12px 14px;
-    font-size: 0.9rem;
-  }
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.12s ease;
+
+  &:hover { background: ${({ theme }) => theme.colors.sunTint}; }
+  &:active { transform: scale(0.98); }
 `;
 
 const FunSubmenu = styled.div`
-  padding: 4px 0 4px 8px;
-  border-left: 2px solid rgba(29, 185, 84, 0.4);
-  margin: 4px 0 4px 12px;
+  padding-left: 10px;
+  margin-left: 8px;
+  border-left: 2px solid ${({ theme }) => theme.colors.line};
 `;
 
 const FunRequestOverlay = styled.div`
   position: fixed;
   inset: 0;
-  background: #000;
+  z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
   padding: 20px;
+  background: rgba(28, 28, 30, 0.55);
 `;
+
 const FunRequestCard = styled.div`
-  background: #1a1a1a; 
-  border: 1px solid rgba(29, 185, 84, 0.4);
-  border-radius: 12px;
-  padding: 24px;
-  max-width: 320px;
   width: 100%;
+  max-width: 400px;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 26px;
   text-align: center;
+  animation: ${popIn} 0.26s cubic-bezier(0.34, 1.4, 0.64, 1);
+  box-shadow: 0 5px 0 ${({ theme }) => theme.colors.ink};
 `;
+
 const FunRequestText = styled.p`
-  color: #F8FAFC;
-  font-size: 1rem;
-  margin: 0 0 20px 0;
-  line-height: 1.5;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0 0 20px;
+
+  strong { font-weight: 800; }
 `;
+
 const FunRequestActions = styled.div`
   display: flex;
-  gap: 12px;
-  justify-content: center;
+  gap: 10px;
+
+  > * { flex: 1; }
 `;
 
-const FunButtonSmall = styled(FunButton)`
-  padding: 10px 14px;
-  font-size: 0.9rem;
-  
-  @media (max-width: 768px) {
-    padding: 10px 12px;
-  }
+const FunButtonSmall = styled.button`
+  height: 48px;
+  padding: 0 18px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:hover { background: ${({ theme }) => theme.colors.sunTint}; }
+  &:active { transform: scale(0.97); }
 `;
+
+/* ── Messages ───────────────────────────────────────────────────────── */
 
 const ChatBox = styled.div`
-  position: ${props => props.$chessMode ? 'relative' : 'absolute'};
-  ${props => props.$chessMode
-    ? 'flex: 1; min-height: 0; width: 100%; max-width: 100%; top: auto; right: auto; bottom: auto; left: auto;'
-    : 'top: 20px; right: 20px; bottom: 100px; width: 300px;'}
-  background: rgba(0,0,0,0.9);
-  border-radius: 12px;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(10px);
-  z-index: 5;
-  ${props => !props.$chessMode && 'border: 1px solid rgba(29,185,84,0.3);'}
-  
-  @media (max-width: 768px) {
-    position: ${props => props.$chessMode ? 'relative' : 'fixed'};
-    ${props => props.$chessMode
-      ? 'flex: 1; min-height: 120px;'
-      : `left: 0; right: 0; width: 100%; height: 200px; transition: top 0.2s ease;
-         ${props.$mobileChatTop != null ? `top: ${props.$mobileChatTop}px; bottom: auto;` : 'top: auto; bottom: 0;'}`}
-    border-radius: 0;
-    border: none;
-  }
+  overflow: hidden;
+  margin-bottom: ${({ $keyboardHeight }) => ($keyboardHeight ? `${$keyboardHeight}px` : '0')};
 `;
 
 const ChatMessages = styled.div`
   flex: 1;
-  padding: 10px;
+  min-height: 0;
   overflow-y: auto;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  
-  @media (max-width: 768px) {
-    /* Auto-scroll to bottom on mobile */
-    scroll-behavior: smooth;
-    
-    /* Hide scrollbar but keep functionality */
-    &::-webkit-scrollbar {
-      width: 4px;
-    }
-    
-    &::-webkit-scrollbar-track {
-      background: rgba(255,255,255,0.1);
-      border-radius: 2px;
-    }
-    
-    &::-webkit-scrollbar-thumb {
-      background: rgba(29,185,84,0.5);
-      border-radius: 2px;
-    }
-    
-    &::-webkit-scrollbar-thumb:hover {
-      background: rgba(29,185,84,0.7);
-    }
-  }
+  gap: 10px;
+`;
+
+const pop = keyframes`
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 `;
 
 const Message = styled.div`
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  max-width: 80%;
-  word-wrap: break-word;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  
-  &.own {
-    background: rgba(29,185,84,0.2);
-    color: #fff;
-    align-self: flex-end;
-    border: 1px solid rgba(29,185,84,0.4);
-  }
-  
-  &.other {
-    background: rgba(255,255,255,0.1);
-    color: #fff;
-    align-self: flex-start;
-    border: 1px solid rgba(255,255,255,0.2);
-  }
-  
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  }
-`;
-
-const ReplyPreview = styled.div`
-  background: rgba(29,185,84,0.1);
-  border-left: 3px solid #1DB954;
-  padding: 6px 8px;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  color: #1DB954;
   position: relative;
-`;
-
-const ReplyText = styled.div`
-  font-weight: 600;
-  margin-bottom: 2px;
-`;
-
-const ReplyContent = styled.div`
-  color: #B3B3B3;
-  font-style: italic;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const ReplyCancel = styled.button`
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: none;
-  border: none;
-  color: #1DB954;
+  max-width: 82%;
+  padding: 11px 14px;
+  border-radius: ${({ theme }) => theme.radii.bubble};
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  word-break: break-word;
   cursor: pointer;
-  font-size: 0.8rem;
-  padding: 2px;
-  
-  &:hover {
-    color: #fff;
+  animation: ${pop} 0.26s cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  &.own {
+    align-self: flex-end;
+    background: ${({ theme }) => theme.colors.blue};
+    color: ${({ theme }) => theme.colors.paper};
+    border: 1.5px solid ${({ theme }) => theme.colors.blue};
+    border-bottom-right-radius: 4px;
+  }
+
+  &.other {
+    align-self: flex-start;
+    background: ${({ theme }) => theme.colors.paper};
+    color: ${({ theme }) => theme.colors.ink};
+    border: 1.5px solid ${({ theme }) => theme.colors.ink};
+    border-bottom-left-radius: 4px;
   }
 `;
 
 const ReplyIndicator = styled.div`
-  background: rgba(29,185,84,0.1);
-  border-left: 3px solid #1DB954;
-  padding: 4px 8px;
+  border-left: 3px solid currentColor;
+  padding: 3px 0 3px 9px;
   margin-bottom: 6px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  color: #1DB954;
+  opacity: 0.72;
+`;
+
+const ReplyText = styled.div`
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
 `;
 
 const ReplyContentSmall = styled.div`
-  color: #B3B3B3;
-  font-style: italic;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 `;
 
 const ChatInput = styled.div`
+  position: relative;
+  padding: 12px 14px 14px;
+  border-top: 1px solid ${({ theme }) => theme.colors.line};
+
+  @media (max-width: 900px) { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+`;
+
+const ReplyPreview = styled.div`
+  position: relative;
+  background: ${({ theme }) => theme.colors.paperAlt};
+  border: 1px solid ${({ theme }) => theme.colors.line};
+  border-left: 3px solid ${({ theme }) => theme.colors.blue};
+  border-radius: 10px;
+  padding: 8px 38px 8px 11px;
+  margin-bottom: 9px;
+`;
+
+const ReplyContent = styled.div`
+  font-size: 12.5px;
+  font-weight: 500;
+  color: ${({ theme }) => theme.colors.ink};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const ReplyCancel = styled.button`
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  transform: translateY(-50%);
+  width: 25px;
+  height: 25px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1px solid ${({ theme }) => theme.colors.line};
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 12px;
+  cursor: pointer;
   display: flex;
-  flex-direction: column;
-  padding: 10px;
-  border-top: 1px solid rgba(255,255,255,0.1);
-  gap: 8px;
-  min-width: 0;
-  
-  @media (max-width: 768px) {
-    padding: 10px 8px;
-    background: rgba(0,0,0,0.95);
-  }
+  align-items: center;
+  justify-content: center;
 `;
 
 const InputRow = styled.div`
   display: flex;
-  gap: 8px;
   align-items: center;
-  min-width: 0;
-  @media (max-width: 768px) {
-    gap: 6px;
-    min-width: 0;
-    width: 100%;
-  }
+  gap: 6px;
+  background: ${({ theme }) => theme.colors.paperAlt};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.control};
+  padding: 5px 5px 5px 8px;
+
+  &:focus-within { outline: 2px solid ${({ theme }) => theme.colors.sun}; outline-offset: 2px; }
 `;
 
 const MessageInput = styled.input`
   flex: 1;
   min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid rgba(29,185,84,0.3);
-  border-radius: 6px;
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-  font-size: 0.9rem;
-  
-  &:focus {
-    outline: none;
-    border-color: rgba(29,185,84,0.6);
-  }
-  
-  &::placeholder {
-    color: #666;
-  }
-  
-  @media (max-width: 768px) {
-    padding: 8px 10px;
-    font-size: 0.9rem;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(29,185,84,0.5);
-  }
+  height: 38px;
+  border: none;
+  background: transparent;
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 15px;
+  font-weight: 500;
+  padding: 0 4px;
+
+  &::placeholder { color: ${({ theme }) => theme.colors.muted}; }
+  &:focus { outline: none; }
+  &:disabled { cursor: not-allowed; }
 `;
 
-const SendButton = styled.button`
-  padding: 8px;
-  border: 1px solid rgba(29,185,84,0.3);
-  border-radius: 6px;
-  background: rgba(29,185,84,0.1);
-  color: #1DB954;
-  cursor: pointer;
+const IconCircle = styled.button`
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px;
-    font-size: 1.1rem;
-    flex-shrink: 0;
-  }
+  font-size: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:active:not(:disabled) { transform: scale(0.94); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
 `;
 
-const EmojiButton = styled.button`
-  padding: 8px;
-  border: 1px solid rgba(29,185,84,0.3);
-  border-radius: 6px;
-  background: rgba(29,185,84,0.1);
-  color: #1DB954;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background: rgba(29,185,84,0.2);
-    border-color: rgba(29,185,84,0.5);
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px;
-    font-size: 1.1rem;
-    flex-shrink: 0;
-  }
+const EmojiButton = styled(IconCircle)`
+  background: transparent;
+  color: ${({ theme }) => theme.colors.muted};
+
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.line}; }
+`;
+
+const SendButton = styled(IconCircle)`
+  background: ${({ theme }) => theme.colors.blue};
+  color: ${({ theme }) => theme.colors.paper};
+
+  &:hover:not(:disabled) { background: #1F6FE8; }
 `;
 
 const EmojiPicker = styled.div`
   position: absolute;
-  bottom: 50px;
-  left: 0;
-  right: 0;
-  width: 100%;
-  max-height: 120px;
-  background: rgba(0,0,0,0.95);
-  border: 1px solid rgba(29,185,84,0.3);
-  border-radius: 8px;
-  padding: 8px;
+  bottom: calc(100% - 4px);
+  left: 14px;
+  right: 14px;
+  max-height: 190px;
+  overflow-y: auto;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.panel};
+  padding: 10px;
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 4px;
-  backdrop-filter: blur(10px);
-  z-index: 10;
-  overflow: hidden;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 3px;
+  z-index: 30;
+  box-shadow: 0 4px 0 ${({ theme }) => theme.colors.ink};
 `;
 
 const EmojiItem = styled.button`
-  background: none;
+  height: 38px;
   border: none;
-  color: #fff;
-  font-size: 1rem;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 20px;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  
-  &:hover {
-    background: rgba(29,185,84,0.2);
-  }
+  transition: transform 0.12s ease, background 0.15s ease;
+
+  &:hover { background: ${({ theme }) => theme.colors.sunTint}; }
+  &:active { transform: scale(0.9); }
 `;
 
+/* ── Feedback ───────────────────────────────────────────────────────── */
 
 const pulse = keyframes`
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.94); }
 `;
 
 const spin = keyframes`
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 `;
 
 const WaitingIndicator = styled.div`
-  color: #1DB954;
-  font-size: 0.9rem;
-  text-align: center;
-  animation: ${pulse} 2s ease-in-out infinite;
-  margin-bottom: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.paper};
+  animation: ${pulse} 1.4s ease-in-out infinite;
 `;
 
 const BufferSpinner = styled.div`
-  width: 56px;
-  height: 56px;
-  border: 6px solid rgba(29,185,84,0.3);
-  border-top-color: #1DB954;
-  border-radius: 50%;
-  animation: ${spin} 0.9s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(29,185,84,0.5));
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: ${({ theme }) => theme.colors.sun};
+  animation: ${spin} 0.8s linear infinite;
 `;
 
 const ErrorMessage = styled.div`
-  color: #ff4444;
-  font-size: 0.9rem;
-  text-align: center;
-  margin-bottom: 20px;
-  padding: 10px;
-  background: rgba(255,68,68,0.1);
-  border: 1px solid rgba(255,68,68,0.3);
-  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: ${({ theme }) => theme.colors.red};
+  color: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.control};
+  padding: 11px 14px;
+  margin: 12px 14px 0;
+  font-size: 14px;
+  font-weight: 700;
 `;
-
 function VideoChat() {
   const [isConnected, setIsConnected] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
@@ -2773,8 +2287,93 @@ function VideoChat() {
                       )}
                     </VideoFeed>
           </VideoFeedsContainer>
+                   <BottomControlsSection>
+                     <ChatControls>
+                      {!isStarted ? (
+                        <ChatControlsStartRight>
+                          <StartChatButton onClick={startNewChat} title="Start chat">
+                            Start Chat
+                          </StartChatButton>
+                        </ChatControlsStartRight>
+                      ) : (
+                        <>
+                          <FunMenuWrap ref={funMenuRef}>
+                            {funToken === 1 ? (
+                              <FunButton onClick={exitFun} title="Exit fun game" style={{ borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
+                                EXIT FUN
+                              </FunButton>
+                            ) : (
+                              <>
+                            <FunButton
+                              disabled={isWaiting && !isConnected}
+                              onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); }}
+                              title="Fun features"
+                            >
+                              <ButtonIcon><FiZap /></ButtonIcon>
+                              Fun
+                            </FunButton>
+                            {showFunMenu && (
+                              <FunMenuPopover>
+                                <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
+                                  <FiVideo size={18} /> Watch Along
+                                </FunMenuItem>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
+                                  <FiHeadphones size={18} /> Listen Along
+                                </FunMenuItem>
+                                <FunMenuItem>
+                                  <FiPlay size={18} /> Play Along
+                                </FunMenuItem>
+                                <FunSubmenu>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
+                                    Chess
+                                  </FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
+                                    Truth and Dare
+                                  </FunMenuItem>
+                                </FunSubmenu>
+                              </FunMenuPopover>
+                            )}
+                              </>
+                            )}
+                          </FunMenuWrap>
+                          <ChatControlsRight>
+                            <StopButton
+                              onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
+                              title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
+                            >
+                              Stop
+                            </StopButton>
+                            <SkipButton
+                              onClick={skipPartner}
+                              title="Skip to next stranger"
+                              disabled={!isStarted || (isWaiting && !isConnected)}
+                            >
+                              Skip
+                            </SkipButton>
+                          </ChatControlsRight>
+                        </>
+                      )}
+                     </ChatControls>
+                   </BottomControlsSection>
           
           <ChatSection $isFullScreenMobile={isMobileFullscreen}>
+            <ChatHeader>
+              <Logo>
+                <div>
+                  <BrandText>Live Chat</BrandText>
+                  <InterestText style={{ display: 'block' }}>
+                    {isConnected
+                      ? 'Anonymous · nothing is stored'
+                      : isWaiting
+                        ? 'Looking for a stranger…'
+                        : 'Start a chat to begin'}
+                  </InterestText>
+                </div>
+              </Logo>
+              <StatusMessage>
+                {isConnected ? 'Live' : isWaiting ? 'Searching' : 'Idle'}
+              </StatusMessage>
+            </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
             {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
               <ChessArea>
@@ -3064,74 +2663,6 @@ function VideoChat() {
              </ChatBox>
                    )}
              
-                   <BottomControlsSection>
-                     <ChatControls>
-                      {!isStarted ? (
-                        <ChatControlsStartRight>
-                          <StartChatButton onClick={startNewChat} title="Start chat">
-                            Start Chat
-                          </StartChatButton>
-                        </ChatControlsStartRight>
-                      ) : (
-                        <>
-                          <FunMenuWrap ref={funMenuRef}>
-                            {funToken === 1 ? (
-                              <FunButton onClick={exitFun} title="Exit fun game" style={{ borderColor: 'rgba(239,68,68,0.7)', background: 'rgba(239,68,68,0.2)', color: '#f87171' }}>
-                                EXIT FUN
-                              </FunButton>
-                            ) : (
-                              <>
-                            <FunButton
-                              disabled={isWaiting && !isConnected}
-                              onClick={() => { if (!(isWaiting && !isConnected)) setShowFunMenu((v) => !v); }}
-                              title="Fun features"
-                            >
-                              <ButtonIcon><FiZap /></ButtonIcon>
-                              Fun
-                            </FunButton>
-                            {showFunMenu && (
-                              <FunMenuPopover>
-                                <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
-                                  <FiVideo size={18} /> Watch Along
-                                </FunMenuItem>
-                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
-                                  <FiHeadphones size={18} /> Listen Along
-                                </FunMenuItem>
-                                <FunMenuItem>
-                                  <FiPlay size={18} /> Play Along
-                                </FunMenuItem>
-                                <FunSubmenu>
-                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
-                                    Chess
-                                  </FunMenuItem>
-                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
-                                    Truth and Dare
-                                  </FunMenuItem>
-                                </FunSubmenu>
-                              </FunMenuPopover>
-                            )}
-                              </>
-                            )}
-                          </FunMenuWrap>
-                          <ChatControlsRight>
-                            <StopButton
-                              onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
-                              title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
-                            >
-                              Stop
-                            </StopButton>
-                            <SkipButton
-                              onClick={skipPartner}
-                              title="Skip to next stranger"
-                              disabled={!isStarted || (isWaiting && !isConnected)}
-                            >
-                              Skip
-                            </SkipButton>
-                          </ChatControlsRight>
-                        </>
-                      )}
-                     </ChatControls>
-                   </BottomControlsSection>
           </ChatSection>
         </VideoSection>
       </MainContent>

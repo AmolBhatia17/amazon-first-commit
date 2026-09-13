@@ -67,7 +67,7 @@ const AudioVisualizer = ({ stream, isLocal }) => {
       // Draw base circle
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-      ctx.strokeStyle = '#1DB954';
+      ctx.strokeStyle = '#F9C74A';
       ctx.lineWidth = 2;
       ctx.stroke();
 
@@ -88,7 +88,7 @@ const AudioVisualizer = ({ stream, isLocal }) => {
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
-        ctx.strokeStyle = `rgba(29, 185, 84, ${0.4 + percent * 0.6})`;
+        ctx.strokeStyle = `rgba(249, 199, 74, ${0.4 + percent * 0.6})`;
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.stroke();

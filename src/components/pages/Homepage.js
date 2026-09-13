@@ -1,566 +1,741 @@
-import React, { useState } from 'react';
+import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Link } from 'react-router-dom';
-import ReportBugModal from '../ui/ReportBugModal';
-import { FiArrowRight, FiZap, FiMessageCircle, FiMic, FiVideo, FiAlertTriangle } from 'react-icons/fi';
-import UniversalHamburger from '../ui/UniversalHamburger';
+import {
+  FiMessageSquare, FiMic, FiVideo, FiArrowRight, FiZap,
+  FiEyeOff, FiRefreshCw, FiShield,
+} from 'react-icons/fi';
+import Header from '../layout/Header';
 import Footer from '../layout/Footer';
 
+/* ── Layout ─────────────────────────────────────────────────────────── */
+
 const Page = styled.div`
+  width: 100%;
   min-height: 100vh;
-  width: 100%;
-  background: ${({ theme }) => theme.colors.appBg};
-  color: #fff;
-  overflow-x: hidden;
-  position: relative;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  padding-top: 72px;
   display: flex;
   flex-direction: column;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: 
-      radial-gradient(60% 80% at 50% 20%, rgba(29,185,84,0.08) 0%, rgba(0,0,0,0) 60%),
-      radial-gradient(600px 300px at 50% 10%, rgba(29,185,84,0.05), rgba(0,0,0,0) 60%);
-    pointer-events: none;
-  }
+
+  @media (max-width: 768px) { padding-top: 60px; }
 `;
 
-/* Grows with content; when short, flex pushes footer to bottom so no black gap */
-const Main = styled.main`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  z-index: 1;
-`;
-
-const TopNav = styled.nav`
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  backdrop-filter: blur(10px);
-  background: rgba(0,0,0,0.5);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-`;
-
-const NavInner = styled.div`
+const Section = styled.section`
   width: 100%;
-  max-width: 1200px;
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const Brand = styled(Link)`
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  text-decoration: none;
-  color: #fff;
-  font-weight: 900;
-  letter-spacing: 0.5px;
-  img { height: 56px; width: 56px; border-radius: 12px; }
-  @media (max-width: 720px) {
-    img { height: 44px; width: 44px; border-radius: 10px; }
-  }
-`;
-
-const BrandText = styled.span`
-  color: #ffffff;
-  font-family: 'Press Start 2P', cursive, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  font-size: 22px;
-  line-height: 1;
-  letter-spacing: 0.5px;
-  @media (max-width: 720px) { font-size: 18px; }
-`;
-
-const NavCtas = styled.div`
-  display: inline-flex;
-  gap: 10px;
-  align-items: center;
-`;
-
-const ReportPillButton = styled.button`
-  margin-left: 0;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: 0.85rem;
-  color: ${({ theme }) => theme.colors.spotifyGreen};
-  background: ${({ theme }) => `rgba(29,185,84,0.12)`};
-  border: 1px solid ${({ theme }) => `rgba(29,185,84,0.35)`};
-  cursor: pointer;
-  transition: border-color 0.2s, transform 0.15s;
-  &:hover { border-color: rgba(29,185,84,0.65); transform: translateY(-1px); }
-  
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const GhostLink = styled(Link)`
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.12);
-  text-decoration: none;
-  color: #fff;
-  font-weight: 700;
-  background: rgba(0,0,0,0.5);
-  transition: transform .2s, box-shadow .2s, border-color .2s;
-  &:hover { transform: translateY(-1px); border-color: rgba(29,185,84,.6); box-shadow: 0 10px 24px rgba(29,185,84,.18); }
-  ${({ $hero }) => $hero && `
-    padding: 26px 28px;
-    font-size: 1.15rem;
-    background: rgba(255,255,255,0.06);
-    border: 2px solid rgba(255,255,255,0.22);
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 6px 18px rgba(0,0,0,0.35);
-  `}
-  
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const PrimaryLink = styled(Link)`
-  padding: 12px 20px;
-  border-radius: 999px;
-  text-decoration: none;
-  color: #0b0b0f;
-  font-weight: 900;
-  background: linear-gradient(135deg, #1DB954, #19a64c);
-  box-shadow: 0 0 0 2px rgba(29,185,84,.25), 0 12px 28px rgba(29,185,84,.25);
-  border: 1px solid rgba(29,185,84,.9);
-  transition: transform .2s, box-shadow .2s;
-  &:hover { transform: translateY(-1px); box-shadow: 0 0 0 4px rgba(29,185,84,.18), 0 16px 34px rgba(29,185,84,.35); }
-  ${({ $hero }) => $hero && `
-    font-size: 2rem;
-    padding: 24px 44px;
-    box-shadow: 0 0 0 2px rgba(29,185,84,.25), 0 12px 28px rgba(29,185,84,.25);
-    @media (max-width: 768px) {
-      font-size: 1.5rem;
-      padding: 18px 32px;
-    }
-  `}
-`;
-
-const float = keyframes`
-  0% { transform: translateY(0) }
-  50% { transform: translateY(-8px) }
-  100% { transform: translateY(0) }
-`;
-
-const ticker = keyframes`
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-100%); }
-`;
-
-const Aurora = styled.div`
-  position: absolute; inset: -20% -10% -10% -10%;
-  pointer-events: none;
-  z-index: 0;
-  &::before, &::after {
-    content: '';
-    position: absolute;
-    width: 60vw; height: 60vw;
-    background: radial-gradient(50% 50% at 50% 50%, rgba(29,185,84,.25) 0%, rgba(29,185,84,0) 70%);
-    filter: blur(40px);
-    border-radius: 50%;
-    animation: ${float} 9s ease-in-out infinite;
-  }
-  &::before { top: 0; left: -10vw; animation-delay: .2s }
-  &::after { bottom: -10vh; right: -10vw; animation-delay: .9s }
-`;
-
-const Hero = styled.section`
-  position: relative;
-  padding: 140px 20px 60px;
-  display: grid;
-  grid-template-columns: 1.1fr .9fr;
-  gap: 32px;
-  width: 100%;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  z-index: 1;
-  @media (max-width: 960px) { grid-template-columns: 1fr; padding-top: 120px; }
+  padding: 0 24px;
+
+  @media (max-width: 768px) { padding: 0 16px; }
+`;
+
+/* ── Hero ───────────────────────────────────────────────────────────── */
+
+const Hero = styled(Section)`
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 48px;
+  align-items: center;
+  padding-top: 40px;
+  padding-bottom: 56px;
+
+  @media (max-width: 980px) {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding-top: 28px;
+    padding-bottom: 36px;
+  }
+`;
+
+const HeroCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+`;
+
+const KickerPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  box-shadow: 0 2px 0 ${({ theme }) => theme.colors.ink};
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.ink};
+  margin-bottom: 24px;
 `;
 
 const Headline = styled.h1`
-  font-size: clamp(2.3rem, 5vw, 4rem);
-  line-height: 1.05;
-  font-weight: 900;
-  letter-spacing: -0.5px;
-  margin: 0 0 14px;
-  background: linear-gradient(135deg, #1DB954 0%, #19a64c 60%, #8ef1b8 100%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: 54px;
+  line-height: 1.06;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0 0 20px;
+
+  @media (max-width: 980px) { font-size: 42px; }
+  @media (max-width: 560px) { font-size: 34px; }
 `;
 
-const Funky = styled.span`
+/* Hand-drawn marker swipe under a word — the signature landing detail */
+const Marked = styled.span`
+  position: relative;
   display: inline-block;
-  transform: rotate(-2deg);
-  padding: 2px 10px;
-  background: rgba(29,185,84,.12);
-  border: 1px solid rgba(29,185,84,.35);
-  border-radius: 10px;
-  color: #1DB954;
-  -webkit-text-fill-color: #1DB954;
-  font-weight: 900;
+  white-space: nowrap;
+
+  span { position: relative; z-index: 1; }
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    bottom: -3px;
+    height: 9px;
+    background: ${({ theme }) => theme.colors.ink};
+    border-radius: 999px 999px 999px 999px / 8px;
+    transform: rotate(-1deg);
+    z-index: 0;
+  }
 `;
 
 const Sub = styled.p`
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: clamp(1rem, 1.7vw, 1.2rem);
-  line-height: 1.7;
-  margin: 0 0 18px;
-`;
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: rgba(28, 28, 30, 0.72);
+  max-width: 560px;
+  margin: 0 0 28px;
 
-const Kicker = styled.div`
-  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;
-  color: #8ef1b8; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; font-size: .9rem;
-  background: rgba(29,185,84,.12); border: 1px solid rgba(29,185,84,.35); padding: 6px 10px; border-radius: 999px;
+  @media (max-width: 560px) { font-size: 15px; }
 `;
 
 const CTAGroup = styled.div`
-  display: inline-flex; gap: 12px; flex-wrap: wrap; margin: 6px 0 16px;
-`;
-
-const Mock = styled.div`
-  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
   width: 100%;
-  height: 440px;
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,.06);
-  background: linear-gradient(180deg, rgba(0,0,0,.8), rgba(18,18,18,.95));
-  box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
-  overflow: hidden;
-  @media (max-width: 960px) { height: 360px; }
-  @media (max-width: 768px) { height: 400px; }
 `;
 
-const MockStrip = styled.div`
-  position: absolute; bottom: 0; left: 0; right: 0;
-  padding: 16px; display: flex; align-items: center; gap: 10px; justify-content: center;
-  background: linear-gradient(180deg, rgba(0,0,0,.2), rgba(0,0,0,.65));
-  border-top: 1px solid rgba(255,255,255,.06);
+const PrimaryLink = styled(Link)`
+  height: 54px;
+  padding: 0 28px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 0 rgba(28, 28, 30, 0.35);
+  transition: transform 0.15s ease;
+
+  &:hover { transform: translateY(-2px); }
+  &:active { transform: translateY(0) scale(0.98); }
+
+  @media (max-width: 560px) { width: 100%; }
+`;
+
+const GhostLink = styled(Link)`
+  height: 54px;
+  padding: 0 22px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  box-shadow: 0 4px 0 ${({ theme }) => theme.colors.ink};
+  transition: transform 0.15s ease, background 0.15s ease;
+
+  &:hover { background: ${({ theme }) => theme.colors.paperAlt}; transform: translateY(-2px); }
+  &:active { transform: translateY(0) scale(0.98); }
+
+  svg { color: ${({ theme }) => theme.colors.blue}; }
+
+  @media (max-width: 560px) { width: 100%; }
+`;
+
+/* ── Hero visual: tilted bubble stack ───────────────────────────────── */
+
+const float = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+`;
+
+const HeroVisual = styled.div`
+  position: relative;
+  background: ${({ theme }) => theme.colors.sunTint};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 26px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 6px 0 ${({ theme }) => theme.colors.ink};
+
+  @media (max-width: 980px) { display: none; }
+`;
+
+const Bubble = styled.div`
+  position: relative;
+  align-self: ${({ $own }) => ($own ? 'flex-end' : 'flex-start')};
+  max-width: 86%;
+  padding: 13px 16px;
+  border-radius: ${({ theme }) => theme.radii.bubble};
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  transform: rotate(${({ $tilt }) => $tilt || '0deg'});
+  animation: ${float} 6s ease-in-out infinite;
+  animation-delay: ${({ $delay }) => $delay || '0s'};
+
+  background: ${({ theme, $variant }) =>
+    $variant === 'blue' ? theme.colors.blue
+    : $variant === 'orange' ? theme.colors.orange
+    : $variant === 'sun' ? theme.colors.sun
+    : theme.colors.paper};
+  color: ${({ theme, $variant }) =>
+    $variant === 'blue' ? theme.colors.paper : theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-bottom-${({ $own }) => ($own ? 'right' : 'left')}-radius: 4px;
+`;
+
+const BubbleMeta = styled.div`
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.62;
+  margin-bottom: 5px;
+`;
+
+const BadgePin = styled.span`
+  position: absolute;
+  top: -9px;
+  ${({ $own }) => ($own ? 'left: -9px;' : 'right: -9px;')}
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: ${({ theme, $color }) => $color || theme.colors.blue};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+`;
+
+/* ── Marquee ticker ─────────────────────────────────────────────────── */
+
+const scroll = keyframes`
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 `;
 
 const TickerContainer = styled.div`
-  position: absolute;
-  left: 0; right: 0; bottom: 56px;
-  height: 34px;
+  width: 100%;
+  background: ${({ theme }) => theme.colors.ink};
+  border-top: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-bottom: 1.5px solid ${({ theme }) => theme.colors.ink};
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  pointer-events: none; /* allow clicks through except for explicit buttons */
-  
-  @media (max-width: 768px) {
-    display: none; /* hide ticker on mobile */
-  }
+  padding: 14px 0;
+  margin: 8px 0 48px;
+
+  &:hover > div { animation-play-state: paused; }
 `;
 
 const TickerTrack = styled.div`
-  display: inline-flex;
-  gap: 40px;
-  white-space: nowrap;
-  will-change: transform;
-  animation: ${ticker} 12s linear infinite; /* start immediately and move faster */
-  position: relative;
-  z-index: 2;
-  
-  @media (max-width: 768px) {
-    animation: ${ticker} 35s linear infinite; /* much slower on mobile */
-  }
+  display: flex;
+  width: max-content;
+  animation: ${scroll} 32s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) { animation: none; }
 `;
 
-const TickerText = styled.span`
-  display: inline-block;
-  transform: rotate(-2deg);
-  padding: 4px 12px;
-  background: rgba(29,185,84,.12);
-  border: 1px solid rgba(29,185,84,.35);
-  border-radius: 10px;
-  color: #1DB954;
-  -webkit-text-fill-color: #1DB954;
-  font-weight: 900;
-  font-size: 1rem;
-`;
-
-const TickerButton = styled.button`
-  margin-left: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-weight: 800;
-  font-size: 0.9rem;
-  color: #1DB954;
-  background: rgba(29,185,84,.12);
-  border: 1px solid rgba(29,185,84,.35);
-  cursor: pointer;
-  pointer-events: auto; /* enable click */
-`;
-
-const TickerLine = styled.div`
-  position: relative;
+const TickerItem = styled.span`
   display: inline-flex;
   align-items: center;
-`;
-
-const RunnerSvg = styled.svg`
-  position: absolute;
-  left: -34px; /* appears just behind the text block */
-  bottom: 2px;
-  width: 24px;
-  height: 24px;
-  stroke: #fff;
-  fill: none;
-  stroke-width: 2.2px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(0 0 6px rgba(255,255,255,.6));
-  z-index: 1;
-
-  .poseA { animation: gait 0.45s steps(1) infinite; }
-  .poseB { animation: gait 0.45s steps(1) infinite reverse; }
-
-  @keyframes gait { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  gap: 10px;
+  padding: 0 22px;
+  color: ${({ theme }) => theme.colors.paper};
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 `;
 
 const Dot = styled.span`
-  display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: #1DB954; box-shadow: 0 0 12px rgba(29,185,84,.6);
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.sun};
 `;
 
-const FeatureGrid = styled.section`
-  width: 100%; max-width: 1200px; margin: 28px auto 40px; padding: 0 20px;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+/* ── Section heading ────────────────────────────────────────────────── */
+
+const SectionHead = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  margin-bottom: 24px;
+
+  @media (max-width: 768px) { flex-direction: column; align-items: flex-start; gap: 10px; }
+`;
+
+const SmallPill = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.ink};
+  margin-bottom: 12px;
+`;
+
+const SectionTitle = styled.h2`
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0;
+
+  @media (max-width: 560px) { font-size: 26px; }
+`;
+
+const SectionNote = styled.p`
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(28, 28, 30, 0.65);
+  max-width: 420px;
+  margin: 0;
+`;
+
+/* ── Feature cards ──────────────────────────────────────────────────── */
+
+const FeatureGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 48px;
+
   @media (max-width: 900px) { grid-template-columns: 1fr; }
 `;
 
 const Card = styled(Link)`
-  text-decoration: none; color: #fff;
-  background: rgba(0,0,0,.55);
-  border: 1px solid rgba(29,185,84,.28);
-  border-radius: 16px; padding: 18px; display: flex; gap: 12px; align-items: center;
-  box-shadow: 0 12px 30px rgba(0,0,0,.35);
-  transition: transform .2s, box-shadow .2s, border-color .2s;
-  &:hover { transform: translateY(-4px); box-shadow: 0 18px 40px rgba(29,185,84,.12); border-color: rgba(29,185,84,.6); }
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 24px;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 4px 0 ${({ theme }) => theme.colors.ink};
+
+  &:hover { transform: translateY(-3px); box-shadow: 0 7px 0 ${({ theme }) => theme.colors.ink}; }
+  &:active { transform: translateY(0) scale(0.99); }
 `;
 
-const IconWrap = styled.div`
-  width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
-  background: radial-gradient(100% 100% at 50% 0%, rgba(29,185,84,.45), rgba(0,0,0,.9));
-  border: 1px solid rgba(29,185,84,.5);
+const IconTile = styled.div`
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: ${({ $bg }) => $bg};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 23px;
+  color: ${({ $fg, theme }) => $fg || theme.colors.ink};
+  margin-bottom: 18px;
 `;
 
-const CardText = styled.div`
-  display: flex; flex-direction: column; gap: 4px;
-  h3 { margin: 0; font-size: 1.1rem; }
-  p { margin: 0; color: #B3B3B3; line-height: 1.5; font-size: .95rem; }
+const CardTag = styled.span`
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paperAlt};
+  border: 1px solid ${({ theme }) => theme.colors.line};
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(28, 28, 30, 0.7);
+  margin-bottom: 10px;
 `;
 
-const MobileReportButton = styled.button`
-  display: none;
-  
-  @media (max-width: 768px) {
-    display: flex;
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #1DB954 0%, #19a64c 100%);
-    border: none;
-    color: white;
-    font-size: 1.2rem;
-    cursor: pointer;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
-    z-index: 1000;
-    transition: all 0.2s ease;
-    
-    &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(29, 185, 84, 0.4);
-    }
-    
-    &:active {
-      transform: translateY(0);
-    }
+const CardTitle = styled.h3`
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 0 0 8px;
+`;
+
+const CardText = styled.p`
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(28, 28, 30, 0.66);
+  margin: 0 0 20px;
+  flex: 1;
+`;
+
+const CardFoot = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid ${({ theme }) => theme.colors.line};
+`;
+
+const CardFootText = styled.span`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.ink};
+`;
+
+const ArrowButton = styled.span`
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.ink};
+  color: ${({ theme }) => theme.colors.paper};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+`;
+
+/* ── Safety ─────────────────────────────────────────────────────────── */
+
+const SafetyGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 48px;
+
+  @media (max-width: 900px) { grid-template-columns: 1fr; }
+`;
+
+const SafetyCard = styled.div`
+  background: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.panel};
+  padding: 20px;
+  display: flex;
+  gap: 14px;
+`;
+
+const SafetyIcon = styled.div`
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: ${({ $bg }) => $bg};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  flex-shrink: 0;
+`;
+
+const SafetyTitle = styled.h4`
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: ${({ theme }) => theme.colors.ink};
+  margin: 2px 0 6px;
+`;
+
+const SafetyText = styled.p`
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(28, 28, 30, 0.62);
+  margin: 0;
+`;
+
+/* ── Closing CTA slab ───────────────────────────────────────────────── */
+
+const CTASlab = styled.div`
+  background: ${({ theme }) => theme.colors.ink};
+  border-radius: ${({ theme }) => theme.radii.card};
+  padding: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 8px;
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 28px 22px;
   }
 `;
 
+const SlabTitle = styled.h2`
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  color: ${({ theme }) => theme.colors.paper};
+  margin: 14px 0 0;
+
+  @media (max-width: 560px) { font-size: 27px; }
+`;
+
+const SlabPill = styled.span`
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.sun};
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+`;
+
+const SlabActions = styled.div`
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+
+  @media (max-width: 560px) { width: 100%; }
+`;
+
+const SlabPrimary = styled(Link)`
+  height: 52px;
+  padding: 0 24px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: ${({ theme }) => theme.colors.sun};
+  color: ${({ theme }) => theme.colors.ink};
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background 0.15s ease;
+
+  &:hover { background: ${({ theme }) => theme.colors.ink}; }
+  &:active { transform: scale(0.98); }
+
+  @media (max-width: 560px) { width: 100%; }
+`;
+
+const SlabGhost = styled(Link)`
+  height: 52px;
+  padding: 0 24px;
+  border-radius: ${({ theme }) => theme.radii.control};
+  background: transparent;
+  color: ${({ theme }) => theme.colors.paper};
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background 0.15s ease;
+
+  &:hover { background: rgba(255, 255, 255, 0.1); }
+  &:active { transform: scale(0.98); }
+
+  @media (max-width: 560px) { width: 100%; }
+`;
+
+const tickerItems = [
+  'Anonymous by default', 'No signup', 'Nothing stored', 'Text · Voice · Video',
+  'Peer-to-peer', 'Skip anytime', 'Free forever',
+];
+
 function Homepage() {
-  const [bugOpen, setBugOpen] = useState(false);
-  
   return (
     <Page>
-      <Aurora />
-      <TopNav>
-        <NavInner>
-          <Brand to="/">
-            <img src="/assets/logos/logo.png" alt="Unitalks" />
-            <BrandText>UniTalks</BrandText>
-          </Brand>
-          <NavCtas>
-            <GhostLink to="/video">Try video</GhostLink>
-            <GhostLink to="/voice">Try voice</GhostLink>
-            <ReportPillButton onClick={() => setBugOpen(true)}>
-              Report Bug
-            </ReportPillButton>
-            <UniversalHamburger />
-          </NavCtas>
-        </NavInner>
-      </TopNav>
-      
-      
-      {bugOpen && <ReportBugModal onClose={() => setBugOpen(false)} />}
+      <Header />
 
-      <Main>
       <Hero>
-        <div>
-          <Kicker>🔥 No identity. No small talk. Just vibes.</Kicker>
+        <HeroCopy>
+          <KickerPill>✨ 100% Anonymous Campus Chat</KickerPill>
           <Headline>
-            Life is too short. <Funky>Just skip & Enjoy.</Funky> Connect and Vibe.
+            Meet college <Marked><span>strangers</span></Marked> who get your wavelength.
           </Headline>
           <Sub>
-            Hop into anonymous conversations that actually feel good. Text, voice, or video —  Meet new people, share hot takes, and vibe out.
+            Skip the small talk and meet students across India in 1-on-1 text, voice or video.
+            No accounts, no logs, totally anonymous.
           </Sub>
           <CTAGroup>
-            <PrimaryLink to="/start-chat" $hero>
-              Start chatting <FiArrowRight style={{ marginLeft: 8, verticalAlign: '-2px' }} />
+            <PrimaryLink to="/start-chat">
+              Start Chatting Now <FiArrowRight />
             </PrimaryLink>
-            <GhostLink to="/video" $hero>Try video</GhostLink>
-            <GhostLink to="/voice" $hero>Try voice</GhostLink>
+            <GhostLink to="/video">
+              <FiZap /> Try Video Chat
+            </GhostLink>
           </CTAGroup>
-        </div>
-        <Mock>
-          {/* Subtle animated stripes to mimic live activity */}
-          <div style={{position:'absolute', inset:0, background:
-            'radial-gradient(70% 50% at 50% 30%, rgba(29,185,84,.15), rgba(0,0,0,0) 60%)'}} />
-          <div style={{position:'absolute', top:24, left:24, right:24, display:'flex', gap:10, alignItems:'center'}}>
-            <span style={{fontWeight:800, letterSpacing:.4}}>Live rooms</span>
-            <span style={{opacity:.7, fontSize:'.95rem'}}>Text • Voice • Video</span>
-          </div>
-          <div style={{position:'absolute', top:76, left:24, right:24, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-            {[1,2,3,4].map(i => (
-              <div key={i} style={{height:110, borderRadius:12, border:'1px solid rgba(255,255,255,.06)', overflow:'hidden', position:'relative', background:'#000'}}>
-                {i === 1 ? (
-                  <picture>
-                    <source srcSet="/image/win_1.webp" type="image/webp" />
-                    <img src="/image/win_1.png" alt="Room 1" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
-                  </picture>
-                ) : i === 2 ? (
-                  <picture>
-                    <source srcSet="/image/win_2.webp" type="image/webp" />
-                    <img src="/image/win_2.png" alt="Room 2" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
-                  </picture>
-                ) : i === 3 ? (
-                  <picture>
-                    <source srcSet="/image/win_3.webp" type="image/webp" />
-                    <img src="/image/win_3.jpg" alt="Room 3" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
-                  </picture>
-                ) : i === 4 ? (
-                  <picture>
-                    <source srcSet="/image/win_4.webp" type="image/webp" />
-                    <img src="/image/win_4.png" alt="Room 4" style={{width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', opacity:.85, filter:'saturate(1.05)'}} loading="lazy" />
-                  </picture>
-                ) : null}
-                <div style={{position:'absolute', inset:0, background:'linear-gradient(180deg, rgba(0,0,0,0) 20%, rgba(0,0,0,.65) 100%)'}} />
-                <div style={{position:'absolute', top:8, left:8, padding:'4px 8px', borderRadius:999, border:'1px solid rgba(255,255,255,.12)', background:'rgba(0,0,0,.55)', display:'inline-flex', alignItems:'center', gap:6, fontSize:12, zIndex:2}}>
-                  <Dot />
-                  <span>matching…</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <MockStrip>
-            <FiZap color="#1DB954" />
-            <span style={{opacity:.9}}>One tap to hop into a fresh convo</span>
-          </MockStrip>
-          <TickerContainer>
-            <TickerTrack>
-              <TickerLine>
-                <RunnerSvg viewBox="0 0 24 24">
-                  <g className="poseA">
-                    <circle cx="8" cy="5" r="2" />
-                    <path d="M8 7 L8 12 L5 16" />
-                    <path d="M8.5 9 L11 11" />
-                    <path d="M8 12 L11 14" />
-                  </g>
-                  <g className="poseB">
-                    <circle cx="8" cy="5" r="2" />
-                    <path d="M8 7 L9.5 11 L7 15" />
-                    <path d="M8.5 9 L6 11" />
-                    <path d="M9.3 12 L12 12.8" />
-                  </g>
-                </RunnerSvg>
-                <TickerText>
-                  We are evolving — report bug if found any, give suggestions
-                </TickerText>
-                <TickerButton onClick={() => setBugOpen(true)}>Report Bug</TickerButton>
-              </TickerLine>
-              <TickerLine>
-                <RunnerSvg viewBox="0 0 24 24">
-                  <g className="poseA">
-                    <circle cx="8" cy="5" r="2" />
-                    <path d="M8 7 L8 12 L5 16" />
-                    <path d="M8.5 9 L11 11" />
-                    <path d="M8 12 L11 14" />
-                  </g>
-                  <g className="poseB">
-                    <circle cx="8" cy="5" r="2" />
-                    <path d="M8 7 L9.5 11 L7 15" />
-                    <path d="M8.5 9 L6 11" />
-                    <path d="M9.3 12 L12 12.8" />
-                  </g>
-                </RunnerSvg>
-                <TickerText>
-                  We are evolving — report bug if found any, give suggestions
-                </TickerText>
-                <TickerButton onClick={() => setBugOpen(true)}>Report Bug</TickerButton>
-              </TickerLine>
-            </TickerTrack>
-          </TickerContainer>
-        </Mock>
+        </HeroCopy>
+
+        <HeroVisual>
+          <Bubble $tilt="-1deg" $delay="0s">
+            <BadgePin><FiMessageSquare /></BadgePin>
+            <BubbleMeta>Stranger</BubbleMeta>
+            Anyone pulling an all-nighter for finals? Need peer pressure to stay awake ☕
+          </Bubble>
+          <Bubble $variant="sun" $tilt="1deg" $delay="0.6s">
+            Currently surviving on 2am Maggi and pure academic panic 🍜
+          </Bubble>
+          <Bubble $own $variant="blue" $tilt="-1deg" $delay="1.2s">
+            <BadgePin $own $color="#F59033"><FiZap /></BadgePin>
+            Haha match found! Let's swap study playlists before the brain melts 🎧
+          </Bubble>
+          <Bubble $own $variant="orange" $tilt="1deg" $delay="1.8s">
+            <BubbleMeta>Voice ready</BubbleMeta>
+            Audio room connected • 00:42
+          </Bubble>
+        </HeroVisual>
       </Hero>
 
-      <FeatureGrid>
-        <Card to="/text">
-          <IconWrap><FiMessageCircle /></IconWrap>
-          <CardText>
-            <h3>Text that flows</h3>
-            <p>Fast bubbles, clean layout, no clutter. Say more with less.</p>
-          </CardText>
-        </Card>
-        <Card to="/voice">
-          <IconWrap><FiMic /></IconWrap>
-          <CardText>
-            <h3>Crystal voice</h3>
-            <p>Low-latency audio with slick visualizers. You'll feel the vibe.</p>
-          </CardText>
-        </Card>
-        <Card to="/video">
-          <IconWrap><FiVideo /></IconWrap>
-          <CardText>
-            <h3>Face time, reimagined</h3>
-            <p>Minimal UI, maximal energy. Meet new minds, instantly.</p>
-          </CardText>
-        </Card>
-      </FeatureGrid>
-      </Main>
+      <TickerContainer>
+        <TickerTrack>
+          {[...tickerItems, ...tickerItems].map((item, i) => (
+            <TickerItem key={i}><Dot />{item}</TickerItem>
+          ))}
+        </TickerTrack>
+      </TickerContainer>
+
+      <Section>
+        <SectionHead>
+          <div>
+            <SmallPill>Three ways to connect</SmallPill>
+            <SectionTitle>Pick how you want to talk</SectionTitle>
+          </div>
+          <SectionNote>
+            Zero login barriers. Choose your mode and get matched with another student in seconds.
+          </SectionNote>
+        </SectionHead>
+
+        <FeatureGrid>
+          <Card to="/text">
+            <IconTile $bg="#F9C74A"><FiMessageSquare /></IconTile>
+            <CardTag>Fastest · Low bandwidth</CardTag>
+            <CardTitle>Text Chat</CardTitle>
+            <CardText>
+              Casual banter, hostel confessions, exam tips and late-night rants — with complete anonymity.
+            </CardText>
+            <CardFoot>
+              <CardFootText>Hop in instantly</CardFootText>
+              <ArrowButton><FiArrowRight /></ArrowButton>
+            </CardFoot>
+          </Card>
+
+          <Card to="/voice">
+            <IconTile $bg="#2D7FF9" $fg="#FFFFFF"><FiMic /></IconTile>
+            <CardTag>Crystal audio · Low lag</CardTag>
+            <CardTitle>Voice Chat</CardTitle>
+            <CardText>
+              Late-night chill calls and unfiltered audio conversations, without exchanging numbers or handles.
+            </CardText>
+            <CardFoot>
+              <CardFootText>Start speaking</CardFootText>
+              <ArrowButton><FiArrowRight /></ArrowButton>
+            </CardFoot>
+          </Card>
+
+          <Card to="/video">
+            <IconTile $bg="#F59033"><FiVideo /></IconTile>
+            <CardTag>Face to face</CardTag>
+            <CardTitle>Video Chat</CardTitle>
+            <CardText>
+              Instant face-to-face random matches, peer-to-peer, with a one-tap skip whenever you want out.
+            </CardText>
+            <CardFoot>
+              <CardFootText>Go live</CardFootText>
+              <ArrowButton><FiArrowRight /></ArrowButton>
+            </CardFoot>
+          </Card>
+        </FeatureGrid>
+
+        <SectionHead>
+          <div>
+            <SmallPill>Peace of mind first</SmallPill>
+            <SectionTitle>Built to stay anonymous</SectionTitle>
+          </div>
+        </SectionHead>
+
+        <SafetyGrid>
+          <SafetyCard>
+            <SafetyIcon $bg="#FDE9AE"><FiEyeOff /></SafetyIcon>
+            <div>
+              <SafetyTitle>Strictly anonymous</SafetyTitle>
+              <SafetyText>
+                No phone numbers, no social handles, no profiles. You are always just a fellow student.
+              </SafetyText>
+            </div>
+          </SafetyCard>
+
+          <SafetyCard>
+            <SafetyIcon $bg="#7FB2F7"><FiRefreshCw /></SafetyIcon>
+            <div>
+              <SafetyTitle>Nothing stored</SafetyTitle>
+              <SafetyText>
+                Chats run peer-to-peer over WebRTC. When you disconnect or skip, the conversation is gone.
+              </SafetyText>
+            </div>
+          </SafetyCard>
+
+          <SafetyCard>
+            <SafetyIcon $bg="#FF3B30"><FiShield /></SafetyIcon>
+            <div>
+              <SafetyTitle>Skip anytime</SafetyTitle>
+              <SafetyText>
+                One tap moves you to the next student. No explanation needed, no history kept.
+              </SafetyText>
+            </div>
+          </SafetyCard>
+        </SafetyGrid>
+
+        <CTASlab>
+          <div>
+            <SlabPill>No registration needed</SlabPill>
+            <SlabTitle>
+              Bored in your dorm?<br />Find a match in seconds.
+            </SlabTitle>
+          </div>
+          <SlabActions>
+            <SlabPrimary to="/text">Start Text Chat</SlabPrimary>
+            <SlabGhost to="/voice">Open Voice Room</SlabGhost>
+          </SlabActions>
+        </CTASlab>
+      </Section>
+
       <Footer />
-      
-      {/* Mobile Report Bug Button */}
-      <MobileReportButton onClick={() => setBugOpen(true)} title="Report Bug">
-        <FiAlertTriangle />
-      </MobileReportButton>
     </Page>
   );
 }

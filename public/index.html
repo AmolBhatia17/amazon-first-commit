@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#F9C74A" />
     <meta name="description" content="UniTalks is a modern college social platform for students in India — an Omegle alternative to meet peers, make friends, and chat in text, voice, or video. Safe, fast, and free." />
     <meta name="keywords" content="college social platform, college chat, omegle alternative, text chat, voice chat, video chat, meet students, india students, unitalks" />
     <meta name="robots" content="index,follow" />
@@ -31,10 +31,10 @@
     <link rel="icon" type="image/png" href="%PUBLIC_URL%/assets/logos/favicon.png" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/assets/logos/favicon.png" />
     
-    <!-- Fonts: Inter + Manrope -->
+    <!-- Fonts: Plus Jakarta Sans (Amber Paper design system) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Manrope:wght@500;600;700;800&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="%PUBLIC_URL%/performance.css">
     
     <!-- Global Styles -->
@@ -46,34 +46,37 @@
       }
       
       html, body {
-        background-color: #000000 !important;
-        color: #ffffff;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background-color: #F9C74A;
+        color: #1C1C1E;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         overflow-x: hidden;
       }
-      
+
       #root {
-        background-color: #000000 !important;
+        background-color: #F9C74A;
         min-height: 100vh;
       }
-      
-      /* Ensure no white backgrounds anywhere */
-      * {
-        background-color: transparent !important;
+
+      /* Amber Paper: 40px graph-paper grid, 1px ink rules at 6% */
+      .bg-graph-grid {
+        background-size: 40px 40px;
+        background-image:
+          linear-gradient(to right, rgba(28, 28, 30, 0.06) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(28, 28, 30, 0.06) 1px, transparent 1px);
       }
-      
-      /* Override any potential white backgrounds */
-      div, section, article, main, aside, nav, header, footer {
-        background-color: transparent !important;
+
+      /* Same grid, inverted, for the dark ink canvas (video / voice) */
+      .bg-graph-grid-dark {
+        background-size: 40px 40px;
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
       }
-      
-      /* Ensure form elements have dark backgrounds */
+
       input, textarea, select, button {
-        background-color: rgba(0,0,0,0.6) !important;
-        color: #ffffff !important;
-        border: 1px solid rgba(29,185,84,0.35) !important;
+        font-family: inherit;
       }
-      
+
       /* Hide scrollbars but keep scrolling functionality */
       ::-webkit-scrollbar {
         width: 0px;
