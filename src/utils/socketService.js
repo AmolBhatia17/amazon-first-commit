@@ -1,3 +1,5 @@
+import { primeTurnCredentials } from './webrtcStun';
+
 class SocketService {
   constructor() {
     this.ws = null;
@@ -66,6 +68,10 @@ class SocketService {
     }
 
     const token = await this.getAuthToken();
+    // Warm the TURN credentials before any peer connection is built. Never throws -
+    // if TURN is down we still connect and fall back to STUN.
+    await primeTurnCredentials(this.baseURL);
+
     return new Promise((resolve, reject) => {
       // Convert http/https to ws/wss for WebSocket URL
       const wsUrl = this.baseURL.replace(/^https?:\/\//, (match) => {

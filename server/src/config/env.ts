@@ -7,6 +7,9 @@ interface EnvConfig {
   nodeEnv: string;
   jwtSecret: string;
   corsOrigin?: string;
+  turnSecret?: string;
+  turnHost?: string;
+  turnTtlSeconds: number;
 }
 
 function getEnvConfig(): EnvConfig {
@@ -20,11 +23,20 @@ function getEnvConfig(): EnvConfig {
 
   const corsOrigin = process.env.CORS_ORIGIN;
 
+  // TURN is optional: without it the client falls back to STUN only, which works
+  // for most networks but not symmetric NAT.
+  const turnSecret = process.env.TURN_SECRET || undefined;
+  const turnHost = process.env.TURN_HOST || undefined;
+  const turnTtlSeconds = parseInt(process.env.TURN_TTL_SECONDS || '86400', 10);
+
   return {
     port,
     nodeEnv,
     jwtSecret,
     corsOrigin,
+    turnSecret,
+    turnHost,
+    turnTtlSeconds,
   };
 }
 

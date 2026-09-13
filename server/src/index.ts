@@ -5,13 +5,20 @@ import { WebSocketServer } from 'ws';
 import { env } from './config/env';
 import { verifyToken } from './config/jwt';
 import authRoutes from './routes/auth';
+import turnRoutes from './routes/turn';
 import { MatchmakingService } from './services/matchmaking';
 import { StateManager } from './services/stateManager';
 import { ClientMessage, ServerMessage } from './types';
 import { logger } from './utils/logger';
 
 const app = express();
-app.use(cors({ origin: '*', credentials: true }));
+// In production the frontend is served from the same CloudFront origin, so CORS_ORIGIN
+// pins requests to that domain. Unset (local dev) falls back to permissive.
+app.use(
+  env.corsOrigin
+    ? cors({ origin: env.corsOrigin, credentials: true })
+    : cors({ origin: '*' })
+);
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
@@ -19,6 +26,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/turn', turnRoutes);
 
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
