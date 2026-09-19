@@ -207,10 +207,17 @@ const MobileVideoControls = styled.div`
   @media (max-width: 900px) {
     display: flex;
     position: absolute;
-    left: 50%;
+    /* Centred without a transform: a transformed ancestor would become the
+       containing block for the fixed-position Fun menu inside it. */
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    width: max-content;
+    max-width: calc(100% - 24px);
     bottom: calc(16px + env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    z-index: 9;
+    /* Above the chat sheet (z-index 12). This pill is the stacking context
+       the Fun menu lives in; at 9 the menu was painted behind the sheet. */
+    z-index: 14;
     align-items: center;
     gap: 8px;
     padding: 8px;
@@ -343,6 +350,19 @@ const ChessArea = styled.div`
   align-items: center;
   justify-content: center;
   border-bottom: 1px solid ${({ theme }) => theme.colors.line};
+
+  /* Listen / Watch / Truth panels: take the room the hidden chat box
+     leaves and scroll internally, instead of being cut off. */
+  ${({ $fill }) => $fill && css`
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  `}
 `;
 
 /* ── Listen Along music player ──────────────────────────────────────── */
@@ -354,8 +374,7 @@ const MusicPlayerContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 58%;
-  overflow-y: auto;
+  width: 100%;
 `;
 
 const MusicSearchSection = styled.div`
@@ -741,6 +760,9 @@ const FunMenuPopover = styled.div`
   left: 50%;
   transform: translateX(-50%);
   min-width: 230px;
+  max-width: calc(100vw - 24px);
+  max-height: min(56vh, 380px);
+  overflow-y: auto;
   z-index: 40;
   background: ${({ theme }) => theme.colors.paper};
   border: 1.5px solid ${({ theme }) => theme.colors.ink};
@@ -748,6 +770,20 @@ const FunMenuPopover = styled.div`
   padding: 8px;
   box-shadow: 0 4px 0 ${({ theme }) => theme.colors.ink};
   animation: ${popIn} 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* On phones it opened upward into the header and clipped the first
+     item. Dock it to the bottom of the screen so all of it is reachable. */
+  @media (max-width: 900px) {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    min-width: 0;
+    max-width: none;
+    max-height: 62vh;
+    z-index: 1200;
+  }
 `;
 
 const FunMenuItem = styled.button`
@@ -756,6 +792,7 @@ const FunMenuItem = styled.button`
   align-items: center;
   gap: 10px;
   padding: 11px 12px;
+  min-height: 46px;
   border-radius: ${({ theme }) => theme.radii.control};
   background: transparent;
   border: none;
@@ -2237,7 +2274,7 @@ function VideoChat() {
                               <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
                                 <FiHeadphones size={18} /> Listen Along
                               </FunMenuItem>
-                              <FunMenuItem>
+                              <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
                                 <FiPlay size={18} /> Play Along
                               </FunMenuItem>
                               <FunSubmenu>
@@ -2353,7 +2390,7 @@ function VideoChat() {
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
                                   <FiHeadphones size={18} /> Listen Along
                                 </FunMenuItem>
-                                <FunMenuItem>
+                                <FunMenuItem onClick={() => setShowPlayAlongSubmenu((v) => !v)}>
                                   <FiPlay size={18} /> Play Along
                                 </FunMenuItem>
                                 <FunSubmenu>
@@ -2409,7 +2446,7 @@ function VideoChat() {
             </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
             {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along' || acceptedFunGame === 'truth-and-dare' || acceptedFunGame === 'watch-along') && (
-              <ChessArea>
+              <ChessArea $fill={acceptedFunGame !== 'chess'}>
                 {acceptedFunGame === 'chess' && (
                   <ChessBoard
                     state={chessState}

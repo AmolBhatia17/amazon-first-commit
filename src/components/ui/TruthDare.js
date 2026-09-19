@@ -50,15 +50,15 @@ const DARES = [
   'Read the last thing you typed today in a dramatic voice.',
 ];
 
+/* Height is owned by the panel area in the page, which scrolls if it has to.
+   Capping height here clipped the card on short screens. */
 const Wrap = styled.div`
-  padding: 14px;
-  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
+  width: 100%;
+  padding: 16px 14px;
   background: ${({ theme }) => theme.colors.paperAlt};
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: 58%;
-  overflow-y: auto;
+  gap: 14px;
 `;
 
 const TurnBanner = styled.div`
@@ -77,31 +77,36 @@ const ChoiceRow = styled.div`
 `;
 
 const ChoiceButton = styled.button`
-  flex: 1;
-  max-width: 190px;
-  height: 52px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 220px;
+  min-height: 56px;
+  padding: 0 14px;
   border-radius: ${({ theme }) => theme.radii.control};
   border: 1.5px solid ${({ theme }) => theme.colors.ink};
-  background: ${({ theme }) => theme.colors.paper};
+  background: ${({ theme }) => theme.colors.sun};
   color: ${({ theme }) => theme.colors.ink};
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 9px;
   cursor: pointer;
   box-shadow: ${({ theme }) => theme.shadow.blockSm};
-  transition: transform 0.12s ease, background 0.15s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease;
 
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.sunDeep}; }
   &:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
-  &:disabled { opacity: 0.4; cursor: not-allowed; }
+  &:focus-visible { outline: 2px solid ${({ theme }) => theme.colors.blue}; outline-offset: 2px; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
   &.dare {
     background: ${({ theme }) => theme.colors.ink};
     color: ${({ theme }) => theme.colors.paper};
   }
+  &.dare:hover:not(:disabled) { background: ${({ theme }) => theme.colors.inkSoft}; }
 `;
 
 const PromptCard = styled.div`
@@ -149,28 +154,33 @@ const ActionRow = styled.div`
 `;
 
 const ActionButton = styled.button`
-  height: 42px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 46px;
   padding: 0 16px;
-  border-radius: ${({ theme }) => theme.radii.control};
+  border-radius: ${({ theme }) => theme.radii.pill};
   border: 1.5px solid ${({ theme }) => theme.colors.ink};
   background: ${({ theme }) => theme.colors.paper};
   color: ${({ theme }) => theme.colors.ink};
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   cursor: pointer;
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, background 0.15s ease;
 
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.sunTint}; }
   &:active:not(:disabled) { transform: scale(0.96); }
-  &:disabled { opacity: 0.4; cursor: not-allowed; }
+  &:focus-visible { outline: 2px solid ${({ theme }) => theme.colors.blue}; outline-offset: 2px; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
 
   &.primary {
     background: ${({ theme }) => theme.colors.ink};
     color: ${({ theme }) => theme.colors.paper};
   }
+  &.primary:hover:not(:disabled) { background: ${({ theme }) => theme.colors.inkSoft}; }
 `;
 
 const pickIndex = (len, usedRef) => {

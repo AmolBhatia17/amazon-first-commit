@@ -4,25 +4,25 @@ import { FiPlay, FiPause, FiRotateCcw, FiRotateCw, FiSearch } from 'react-icons/
 
 /* ── Watch Along synced video ────────────────────────────────────────── */
 
+/* Height is owned by the panel area in the page, which scrolls if it has to. */
 const Wrap = styled.div`
-  padding: 14px;
-  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
+  width: 100%;
+  padding: 16px 14px;
   background: ${({ theme }) => theme.colors.paperAlt};
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: 58%;
-  overflow-y: auto;
+  gap: 14px;
 `;
 
 const SearchSection = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 `;
 
 const UrlInput = styled.input`
-  flex: 1;
+  flex: 1 1 160px;
   min-width: 0;
   height: 44px;
   padding: 0 14px;
@@ -47,6 +47,9 @@ const StageFrame = styled.div`
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
+  /* Keep the stage inside the panel on short screens instead of pushing the
+     controls past the fold. */
+  max-height: 44vh;
   border-radius: ${({ theme }) => theme.radii.panel};
   border: 1.5px solid ${({ theme }) => theme.colors.ink};
   background: ${({ theme }) => theme.colors.ink};
@@ -127,11 +130,15 @@ const LoadButton = styled.button`
   font-weight: 700;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease;
 
+  &:hover:not(:disabled) { background: ${({ theme }) => theme.colors.inkSoft}; }
   &:active:not(:disabled) { transform: scale(0.96); }
-  &:disabled { opacity: 0.4; cursor: not-allowed; }
+  &:focus-visible { outline: 2px solid ${({ theme }) => theme.colors.blue}; outline-offset: 2px; }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
 `;
 
 /** Pull the 11-character video id out of any common YouTube URL shape. */
