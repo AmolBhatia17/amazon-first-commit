@@ -8,6 +8,9 @@ import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
+import TruthDare from '../ui/TruthDare';
+import WatchAlong from '../ui/WatchAlong';
+import { searchSaavnTrack } from '../../utils/saavn';
 import AudioVisualizer from '../ui/AudioVisualizer';
 
 // Minimal process polyfill for simple-peer in browser builds
@@ -1030,6 +1033,8 @@ function AudioChat() {
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
   const [isMusicHost, setIsMusicHost] = useState(false);
+  const [isFunHost, setIsFunHost] = useState(false);
+  const [funIncoming, setFunIncoming] = useState(null);
   const [musicTrackUrl, setMusicTrackUrl] = useState('');
   const [musicTrackTitle, setMusicTrackTitle] = useState('');
   const [musicTrackArtist, setMusicTrackArtist] = useState('');
@@ -1038,6 +1043,7 @@ function AudioChat() {
   const [musicTrackDuration, setMusicTrackDuration] = useState(0);
   const [saavnQuery, setSaavnQuery] = useState('');
   const [isLoadingTrack, setIsLoadingTrack] = useState(false);
+  const [musicError, setMusicError] = useState('');
   const [musicIsPlaying, setMusicIsPlaying] = useState(false);
   const [musicPosition, setMusicPosition] = useState(0);
   const [musicDuration, setMusicDuration] = useState(0);
@@ -1226,6 +1232,10 @@ function AudioChat() {
             handleIncomingMusicControl(obj);
             return;
           }
+          if (obj && (obj.type === 'truth-dare' || obj.type === 'watch-control')) {
+            setFunIncoming(obj);
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -1316,6 +1326,8 @@ function AudioChat() {
     setFunToken(0);
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setAudioEnabled(true);
     setError('');
@@ -1341,6 +1353,17 @@ function AudioChat() {
       }));
     } catch (e) {
       console.error('Music control send error', e);
+    }
+  };
+
+  /* Truth and Dare + Watch Along moves ride the same peer data channel. */
+  const sendFunData = (payload) => {
+    const peer = peerConnectionRef.current;
+    if (!peer || typeof peer.send !== 'function') return;
+    try {
+      peer.send(JSON.stringify(payload));
+    } catch (e) {
+      console.error('Fun data send error', e);
     }
   };
 
@@ -1440,7 +1463,6 @@ function AudioChat() {
     };
   }, [acceptedFunGame, musicTrackUrl]);
 
-  const JIOSAAVN_API_BASE = 'https://saavnapi-nine.vercel.app/result/?query=';
 
   const loadSaavnTrack = async () => {
     const query = saavnQuery.trim();
@@ -1455,19 +1477,13 @@ function AudioChat() {
           existingAudio.currentTime = 0;
         } catch (_) {}
       }
-      const resp = await fetch(`${JIOSAAVN_API_BASE}${encodeURIComponent(query)}&lyrics=true`);
-      const data = await resp.json().catch(() => null);
-      const first = Array.isArray(data) ? data[0] : data;
-      if (!first || !(first.media_url || first.url)) {
-        console.error('JioSaavn API: no playable link', data);
+      setMusicError('');
+      const track = await searchSaavnTrack(query);
+      if (!track) {
+        setMusicError('No song found, or the music service is unreachable. Try another search.');
         return;
       }
-      const streamUrl = first.media_url || first.url;
-      const title = first.song || first.title || '';
-      const artist = first.singers || first.music || '';
-      const artwork = first.image || first.image_url || '';
-      const lyrics = first.lyrics || '';
-      const duration = parseInt(first.duration, 10) || 0;
+      const { streamUrl, title, artist, artwork, lyrics, duration } = track;
       setMusicTrackUrl(streamUrl);
       setMusicTrackTitle(title);
       setMusicTrackArtist(artist);
@@ -1490,6 +1506,7 @@ function AudioChat() {
       });
     } catch (e) {
       console.error('JioSaavn API error', e);
+      setMusicError('Could not load that song. Try again.');
     } finally {
       setIsLoadingTrack(false);
     }
@@ -1540,6 +1557,8 @@ function AudioChat() {
     setFunToken(0);
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setError('');
     setMessages([]);
@@ -1578,6 +1597,8 @@ function AudioChat() {
     socketService.send({ type: 'fun-exit' });
     setFunToken(0);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setShowFunMenu(false);
     setShowPlayAlongSubmenu(false);
@@ -1594,6 +1615,8 @@ function AudioChat() {
     setReplyingTo(null);
     setFunToken(0);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setError('');
     triggerRemoteBuffer(true);
@@ -1819,6 +1842,8 @@ function AudioChat() {
       const game = msg?.game || 'chess';
       setFunToken(1);
       setAcceptedFunGame(game);
+      setIsFunHost(true);
+      setFunIncoming(null);
       if (game === 'chess') {
         setAmIWhite(true);
         setChessState(createInitialState());
@@ -1832,6 +1857,8 @@ function AudioChat() {
     const handleFunExit = () => {
       setFunToken(0);
       setAcceptedFunGame(null);
+      setIsFunHost(false);
+      setFunIncoming(null);
       setChessState(createInitialState());
       setIsMusicHost(false);
       setShowFunMenu(false);
@@ -1870,7 +1897,7 @@ function AudioChat() {
     };
   }, [isStarted]);
 
-  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare', 'listen-along': 'Listen Along', 'watch-along': 'Watch Along' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
 
   return (
     <AudioChatContainer>
@@ -1895,6 +1922,8 @@ function AudioChat() {
                   socketService.send({ type: 'fun-accept', game: pendingFunRequest.game });
                   setFunToken(1);
                   setAcceptedFunGame(pendingFunRequest.game);
+                  setIsFunHost(false);
+                  setFunIncoming(null);
                   if (pendingFunRequest.game === 'chess') {
                     setAmIWhite(false);
                     setChessState(createInitialState());
@@ -2016,7 +2045,7 @@ function AudioChat() {
                       </FunButton>
                       {showFunMenu && (
                         <FunMenuPopover>
-                          <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                          <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'watch-along' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
                             <FiVideo size={18} /> Watch Along
                           </FunMenuItem>
                           <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
@@ -2073,7 +2102,7 @@ function AudioChat() {
               </ChatStatusPill>
             </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
+            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along' || acceptedFunGame === 'truth-and-dare' || acceptedFunGame === 'watch-along') && (
               <ChessArea>
                 {acceptedFunGame === 'chess' && (
                   <ChessBoard
@@ -2096,7 +2125,7 @@ function AudioChat() {
                           disabled={isLoadingTrack}
                         />
                         <MusicStatusText>
-                          {isLoadingTrack ? 'Loading track…' : 'Press Enter to search and play'}
+                          {isLoadingTrack ? 'Loading track…' : (musicError || 'Press Enter to search and play')}
                         </MusicStatusText>
                       </MusicSearchSection>
                     )}
@@ -2254,6 +2283,20 @@ function AudioChat() {
                     <audio ref={musicAudioRef} style={{ display: 'none' }} />
                   </MusicPlayerContainer>
                 )}
+                {acceptedFunGame === 'truth-and-dare' && (
+                  <TruthDare
+                    isFirstPicker={isFunHost}
+                    incoming={funIncoming}
+                    sendData={sendFunData}
+                  />
+                )}
+                {acceptedFunGame === 'watch-along' && (
+                  <WatchAlong
+                    isHost={isFunHost}
+                    incoming={funIncoming}
+                    sendData={sendFunData}
+                  />
+                )}
               </ChessArea>
             )}
             {funToken !== 1 && (
@@ -2314,7 +2357,7 @@ function AudioChat() {
                         </FunButtonSmall>
                         {showFunMenu && (
                           <FunMenuPopover>
-                            <FunMenuItem onClick={() => { setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
+                            <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'watch-along' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>
                               <FiVideo size={18} /> Watch Along
                             </FunMenuItem>
                            <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>

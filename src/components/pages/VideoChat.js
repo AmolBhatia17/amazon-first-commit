@@ -8,6 +8,9 @@ import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
+import TruthDare from '../ui/TruthDare';
+import WatchAlong from '../ui/WatchAlong';
+import { searchSaavnTrack } from '../../utils/saavn';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -1109,6 +1112,8 @@ function VideoChat() {
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
   const [isMusicHost, setIsMusicHost] = useState(false);
+  const [isFunHost, setIsFunHost] = useState(false);
+  const [funIncoming, setFunIncoming] = useState(null);
   const [musicTrackUrl, setMusicTrackUrl] = useState('');
   const [musicTrackTitle, setMusicTrackTitle] = useState('');
   const [musicTrackArtist, setMusicTrackArtist] = useState('');
@@ -1117,6 +1122,7 @@ function VideoChat() {
   const [musicTrackDuration, setMusicTrackDuration] = useState(0);
   const [saavnQuery, setSaavnQuery] = useState('');
   const [isLoadingTrack, setIsLoadingTrack] = useState(false);
+  const [musicError, setMusicError] = useState('');
   const [musicIsPlaying, setMusicIsPlaying] = useState(false);
   const [musicPosition, setMusicPosition] = useState(0);
   const [musicDuration, setMusicDuration] = useState(0);
@@ -1315,6 +1321,10 @@ function VideoChat() {
             handleIncomingMusicControl(obj);
             return;
           }
+          if (obj && (obj.type === 'truth-dare' || obj.type === 'watch-control')) {
+            setFunIncoming(obj);
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -1457,6 +1467,8 @@ function VideoChat() {
     setFunToken(0);
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setAudioEnabled(true);
     setError(''); // Clear any connection errors
@@ -1486,6 +1498,17 @@ function VideoChat() {
     }
   };
 
+  /* Truth and Dare + Watch Along moves ride the same peer data channel. */
+  const sendFunData = (payload) => {
+    const peer = peerConnectionRef.current;
+    if (!peer || typeof peer.send !== 'function') return;
+    try {
+      peer.send(JSON.stringify(payload));
+    } catch (e) {
+      console.error('Fun data send error', e);
+    }
+  };
+
   const applyMusicStateToAudio = (trackUrl, isPlaying, positionSeconds) => {
     const audio = musicAudioRef.current;
     if (!audio) return;
@@ -1504,7 +1527,6 @@ function VideoChat() {
     }
   };
 
-  const JIOSAAVN_API_BASE = 'https://saavnapi-nine.vercel.app/result/?query=';
 
   const formatDuration = (seconds) => {
     if (!seconds || !Number.isFinite(seconds)) return '0:00';
@@ -1526,19 +1548,13 @@ function VideoChat() {
           existingAudio.currentTime = 0;
         } catch (_) {}
       }
-      const resp = await fetch(`${JIOSAAVN_API_BASE}${encodeURIComponent(query)}&lyrics=true`);
-      const data = await resp.json().catch(() => null);
-      const first = Array.isArray(data) ? data[0] : data;
-      if (!first || !(first.media_url || first.url)) {
-        console.error('JioSaavn API: no playable link', data);
+      setMusicError('');
+      const track = await searchSaavnTrack(query);
+      if (!track) {
+        setMusicError('No song found, or the music service is unreachable. Try another search.');
         return;
       }
-      const streamUrl = first.media_url || first.url;
-      const title = first.song || first.title || '';
-      const artist = first.singers || first.music || '';
-      const artwork = first.image || first.image_url || '';
-      const lyrics = first.lyrics || '';
-      const duration = parseInt(first.duration, 10) || 0;
+      const { streamUrl, title, artist, artwork, lyrics, duration } = track;
       setMusicTrackUrl(streamUrl);
       setMusicTrackTitle(title);
       setMusicTrackArtist(artist);
@@ -1561,6 +1577,7 @@ function VideoChat() {
       });
     } catch (e) {
       console.error('JioSaavn API error', e);
+      setMusicError('Could not load that song. Try again.');
     } finally {
       setIsLoadingTrack(false);
     }
@@ -1688,6 +1705,8 @@ function VideoChat() {
     setFunToken(0);
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setError('');
     setMessages([]);
@@ -1727,6 +1746,8 @@ function VideoChat() {
     socketService.send({ type: 'fun-exit' });
     setFunToken(0);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setShowFunMenu(false);
     setShowPlayAlongSubmenu(false);
@@ -1744,6 +1765,8 @@ function VideoChat() {
     setReplyingTo(null);
     setFunToken(0);
     setAcceptedFunGame(null);
+    setIsFunHost(false);
+    setFunIncoming(null);
     setChessState(createInitialState());
     setError(''); // Clear errors immediately
     triggerRemoteBuffer(true); // Keep visible while waiting in queue
@@ -2033,6 +2056,8 @@ function VideoChat() {
       const game = msg?.game || 'chess';
       setFunToken(1);
       setAcceptedFunGame(game);
+      setIsFunHost(true);
+      setFunIncoming(null);
       if (game === 'chess') {
         setAmIWhite(true);
         setChessState(createInitialState());
@@ -2047,6 +2072,8 @@ function VideoChat() {
     const handleFunExit = () => {
       setFunToken(0);
       setAcceptedFunGame(null);
+      setIsFunHost(false);
+      setFunIncoming(null);
       setChessState(createInitialState());
       setIsMusicHost(false);
       setShowFunMenu(false);
@@ -2085,7 +2112,7 @@ function VideoChat() {
     };
   }, [isStarted]);
 
-  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare', 'listen-along': 'Listen Along', 'watch-along': 'Watch Along' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
 
   const isFunMode = funToken === 1 || !!acceptedFunGame;
   // On mobile, use the full-screen video layout by default (WhatsApp-style) whenever not in FUN mode.
@@ -2114,6 +2141,8 @@ function VideoChat() {
                   socketService.send({ type: 'fun-accept', game: pendingFunRequest.game });
                   setFunToken(1);
                   setAcceptedFunGame(pendingFunRequest.game);
+                  setIsFunHost(false);
+                  setFunIncoming(null);
                   if (pendingFunRequest.game === 'chess') {
                     setAmIWhite(false);
                     setChessState(createInitialState());
@@ -2202,7 +2231,7 @@ function VideoChat() {
                           </MobileControlButton>
                           {showFunMenu && (
                             <FunMenuPopover>
-                              <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
+                              <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'watch-along' }); setShowFunMenu(false); }}>
                                 <FiVideo size={18} /> Watch Along
                               </FunMenuItem>
                               <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
@@ -2318,7 +2347,7 @@ function VideoChat() {
                             </FunButton>
                             {showFunMenu && (
                               <FunMenuPopover>
-                                <FunMenuItem onClick={() => { setShowFunMenu(false); }}>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'watch-along' }); setShowFunMenu(false); }}>
                                   <FiVideo size={18} /> Watch Along
                                 </FunMenuItem>
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'listen-along' }); setShowFunMenu(false); }}>
@@ -2379,7 +2408,7 @@ function VideoChat() {
               </StatusMessage>
             </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
+            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along' || acceptedFunGame === 'truth-and-dare' || acceptedFunGame === 'watch-along') && (
               <ChessArea>
                 {acceptedFunGame === 'chess' && (
                   <ChessBoard
@@ -2402,7 +2431,7 @@ function VideoChat() {
                           disabled={isLoadingTrack}
                         />
                         <MusicStatusText>
-                          {isLoadingTrack ? 'Loading track…' : 'Press Enter to search and play'}
+                          {isLoadingTrack ? 'Loading track…' : (musicError || 'Press Enter to search and play')}
                         </MusicStatusText>
                       </MusicSearchSection>
                     )}
@@ -2559,6 +2588,20 @@ function VideoChat() {
                     )}
                     <audio ref={musicAudioRef} style={{ display: 'none' }} />
                   </MusicPlayerContainer>
+                )}
+                {acceptedFunGame === 'truth-and-dare' && (
+                  <TruthDare
+                    isFirstPicker={isFunHost}
+                    incoming={funIncoming}
+                    sendData={sendFunData}
+                  />
+                )}
+                {acceptedFunGame === 'watch-along' && (
+                  <WatchAlong
+                    isHost={isFunHost}
+                    incoming={funIncoming}
+                    sendData={sendFunData}
+                  />
                 )}
               </ChessArea>
             )}
