@@ -16,3 +16,5 @@ frontend:
   cache:
     paths:
       - node_modules/**/*
+#amplify
+# GitHub metadata update: no functional change.
