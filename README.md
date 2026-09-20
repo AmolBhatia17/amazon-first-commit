@@ -670,3 +670,4 @@ Contributions are welcome! Please follow these guidelines:
 *Built with ❤️ for accessible, safe, and collaborative campus spaces.*
 
 </div>
+....................................................................................
