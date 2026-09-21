@@ -6,7 +6,7 @@
 
 <br>
 
-🌐 **[Live App (AWS Lightsail)](https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://www.youtube.com/watch?v=LDV3IZyBd_I)** *(formerly ideated as Gingr)*
+🌐 **[Live App (AWS Lightsail)](https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://youtu.be/RTatUVS6jGQ)** *(formerly ideated as Gingr)*
 
 <br>
 
@@ -146,21 +146,21 @@ Traditional social and chat applications don't come close to offering a verified
 <table>
 <tr>
 <td width="50%" align="center">
-<img src="./docs/images/gingr_landing.png" alt="Landing Page" width="100%"/>
-<br><em>Modern Student Landing Page (formerly Gingr)</em>
+<img src="./public/image/win_1.png" alt="Landing Page" width="100%"/>
+<br><em>Modern Student Landing Page</em>
 </td>
 <td width="50%" align="center">
-<img src="./docs/images/chat_modes.png" alt="Chat Mode Selector" width="100%"/>
+<img src="./public/image/win_2.jpg" alt="Chat Mode Selector" width="100%"/>
 <br><em>Multi-Modal Chat Selection (Text, Audio, Video)</em>
 </td>
 </tr>
 <tr>
 <td width="50%" align="center">
-<img src="./docs/images/edit_profile.png" alt="Edit Profile" width="100%"/>
+<img src="./public/image/win_3.jpg" alt="Edit Profile" width="100%"/>
 <br><em>Anonymous Avatar Selector & Profile Creator</em>
 </td>
 <td width="50%" align="center">
-<img src="./docs/images/unitalks_branding.png" alt="UniTalks Concept Card" width="100%"/>
+<img src="./public/image/win_4.png" alt="UniTalks Concept Card" width="100%"/>
 <br><em>UniTalks Platform Value Proposition</em>
 </td>
 </tr>
@@ -597,7 +597,7 @@ Our MVP demonstration highlights the full student onboarding journey: anonymous 
 
 <div align="center">
 
-[![UniTalks Demo Video](https://img.youtube.com/vi/LDV3IZyBd_I/0.jpg)](https://www.youtube.com/watch?v=LDV3IZyBd_I)
+[![UniTalks Demo Video](https://img.youtube.com/vi/RTatUVS6jGQ/0.jpg)](https://youtu.be/RTatUVS6jGQ)
 
 *▶️ Click to watch the live platform MVP demo on YouTube (formerly ideated as Gingr)*
 
