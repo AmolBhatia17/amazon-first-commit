@@ -10,10 +10,6 @@
 
 <br>
 
-<img src="./docs/images/hero_banner.png" alt="UniTalks Banner" width="600"/>
-
-<br><br>
-
 [![React](https://img.shields.io/badge/React-18.2.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![WebRTC](https://img.shields.io/badge/WebRTC-Simple--Peer-orange?style=for-the-badge&logo=webrtc&logoColor=white)](https://webrtc.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
@@ -55,7 +51,7 @@
 
 <table>
 <tr>
-<td width="55%">
+<td width="100%">
 
 🌐 **College-Verified Anonymous Space** — Only verified students join, ensuring campus safety and relatable interactions.
 
@@ -68,11 +64,6 @@
 🧑‍💻 **Code-Along Collaboration** — Shared real-time coding environments to build, debug, and learn together.
 
 👑 **King-Queen Algorithm** — A silent backend reputation engine prioritizing verified positive contributors to keep the community healthy.
-
-</td>
-<td width="45%">
-
-<img src="./docs/images/live_video_chat.png" alt="UniTalks Video Chat" width="100%"/>
 
 </td>
 </tr>
@@ -100,12 +91,6 @@ wired up right now versus what is still roadmap:
 
 ## 💡 Why UniTalks?
 
-<div align="center">
-<img src="./docs/images/problem_gaps.png" alt="Three Gaps UniTalks Solves" width="75%"/>
-</div>
-
-<br>
-
 Relocating for university or attending virtual classes often leads to isolation. Traditional platforms fail to address these unique challenges:
 
 | ❌ The Problem | ✅ How UniTalks Solves It |
@@ -118,17 +103,9 @@ Relocating for university or attending virtual classes often leads to isolation.
 
 Traditional social and chat applications don't come close to offering a verified, anonymous, and collaborative experience tailored for Indian college students:
 
-<div align="center">
-<img src="./docs/images/competition_comparison.png" alt="UniTalks Competitive Matrix" width="75%"/>
-</div>
-
 ---
 
 ## 🚀 Key Features
-
-<div align="center">
-<img src="./docs/images/core_features.png" alt="Core Features Slide" width="75%"/>
-</div>
 
 - **Anonymous P2P Chat**: Establish encrypted 1-on-1 audio/video sessions or text rooms. Handled fully peer-to-peer via `simple-peer` WebRTC streams.
 - **College & City Groups**: Join curated, location-centric peer groups for campus discussions, sharing localized recommendations, or organizing mock interviews.
@@ -143,43 +120,16 @@ Traditional social and chat applications don't come close to offering a verified
 
 ### 💻 Student Experience & User Flow
 
-<table>
-<tr>
-<td width="50%" align="center">
-<img src="./public/image/win_1.png" alt="Landing Page" width="100%"/>
+<div align="center">
+<img src="./public/image/win_1.png" alt="Landing Page" width="80%"/>
 <br><em>Modern Student Landing Page</em>
-</td>
-<td width="50%" align="center">
-<img src="./public/image/win_2.jpg" alt="Chat Mode Selector" width="100%"/>
+<br><br>
+<img src="./public/image/win_2.jpg" alt="Chat Mode Selector" width="80%"/>
 <br><em>Multi-Modal Chat Selection (Text, Audio, Video)</em>
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
-<img src="./public/image/win_3.jpg" alt="Edit Profile" width="100%"/>
-<br><em>Anonymous Avatar Selector & Profile Creator</em>
-</td>
-<td width="50%" align="center">
-<img src="./public/image/win_4.png" alt="UniTalks Concept Card" width="100%"/>
-<br><em>UniTalks Platform Value Proposition</em>
-</td>
-</tr>
-</table>
-
-### 🏫 Localized Communities
-
-<table>
-<tr>
-<td width="50%" align="center">
-<img src="./docs/images/community_colleges.png" alt="College Community Directory" width="100%"/>
-<br><em>Verified College & University Group Hubs</em>
-</td>
-<td width="50%" align="center">
-<img src="./docs/images/community_cities.png" alt="City Community Directory" width="100%"/>
-<br><em>City-Wide Geofenced Student Communities</em>
-</td>
-</tr>
-</table>
+<br><br>
+<img src="./public/image/win_3.jpg" alt="Live Video Chat" width="80%"/>
+<br><em>Live Video Chat Experience</em>
+</div>
 
 ---
 
@@ -198,27 +148,8 @@ Unlike static school projects, UniTalks is a battle-tested platform with real ma
 - 🗺️ **Global Footprint**: Dominant engagement in India (677 active users) with expanding test users in the US (29), UK (6), and Germany (4).
 
 </td>
-<td width="50%">
-
-<img src="./docs/images/analytics_30d_users.png" alt="30 Day Active Users" width="100%"/>
-
-</td>
 </tr>
 </table>
-
-#### Analytics Insights Snapshot
-<div align="center">
-<table>
-<tr>
-<td align="center"><img src="./docs/images/analytics_country.png" alt="Active Users by Country" width="100%"/></td>
-<td align="center"><img src="./docs/images/analytics_views.png" alt="Page Views distribution" width="100%"/></td>
-</tr>
-<tr>
-<td align="center"><img src="./docs/images/analytics_sessions.png" alt="Traffic Sources" width="100%"/></td>
-<td align="center"><img src="./docs/images/analytics_events.png" alt="Event Logs" width="100%"/></td>
-</tr>
-</table>
-</div>
 
 ---
 
@@ -599,19 +530,13 @@ Our MVP demonstration highlights the full student onboarding journey: anonymous 
 
 [![UniTalks Demo Video](https://img.youtube.com/vi/RTatUVS6jGQ/0.jpg)](https://youtu.be/RTatUVS6jGQ)
 
-*▶️ Click to watch the live platform MVP demo on YouTube (formerly ideated as Gingr)*
+*▶️ Click to watch the live platform MVP demo on YouTube*
 
 </div>
 
 ---
 
 ## 📈 Market Opportunity & SWOT
-
-<div align="center">
-<img src="./docs/images/market_swot.png" alt="Market Sizing & SWOT Analysis" width="80%"/>
-</div>
-
-<br>
 
 To demonstrate the commercial and strategic potential of the UniTalks product model, we mapped out its growth variables:
 
