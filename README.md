@@ -6,7 +6,7 @@
 
 <br>
 
-🌐 **[Live App (AWS Lightsail)](https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://youtu.be/RTatUVS6jGQ)** *(formerly ideated as Gingr)*
+🌐 **[Live App (AWS Lightsail)](https://unitalks.j9m8cp1zn4j6g.us-east-1.cs.amazonlightsail.com)** &nbsp;|&nbsp; 🎬 **[MVP Demo Video (YouTube)](https://youtu.be/RTatUVS6jGQ)** 
 
 <br>
 
