@@ -1,21 +1,25 @@
 /**
- * Football engine (HaxBall-style, 1v1): full 2D physics for the in-call game.
- * Board: rectangular pitch, players = circles, ball = circle, goals in the left/right
- * walls with round posts. Host-authoritative: only the host runs stepMatch(); the
- * guest receives snapshots over the WebRTC data channel and renders them.
+ * Football engine (HaxBall-style, 1v1) — VERTICAL pitch: goals in the TOP and
+ * BOTTOM walls. Each player sees their own goal at the bottom of the screen
+ * (the guest client renders the host world rotated 180°), attacking upward.
  *
- * Coordinate convention: world x=[0..W], y=[0..H]. Host is side 0 (left half,
- * defends LEFT goal, attacks RIGHT goal). Guest is side 1 (right half, defends
- * RIGHT goal, attacks LEFT goal). scores[0] = host goals, scores[1] = guest goals.
- * The guest client renders the state rotated 180° so both players always see
- * themselves attacking to the right.
+ * Board: world x=[0..W] (width), y=[0..H] (height, portrait). The goal lines sit
+ * inside the canvas: TOP goal line at y=GOAL_TOP, BOTTOM goal line at y=H-GOAL_DEPTH;
+ * the strips beyond them are the nets.
+ * Host is side 0: red, defends the BOTTOM goal, attacks the TOP goal →
+ * crossing the TOP goal line scores for the host. Guest is side 1: blue,
+ * defends the TOP goal, attacks the BOTTOM goal.
+ *
+ * Match rule carries from the fun-request key ("football:goals-3" | "football:time-2")
+ * as cfg = {mode:'goals'|'time', n}. Host-authoritative: only the host runs
+ * stepMatch(); the guest receives serialized snapshots over the peer data channel.
  */
 
 export const PITCH = {
-  W: 1050,
-  H: 626,
-  GOAL_H: 200, // opening height of each goal mouth
-  GOAL_DEPTH: 46, // net depth behind the goal line (visual + score threshold)
+  W: 626, // width (portrait)
+  H: 1050, // height (portrait)
+  GOAL_H: 194, // opening width of each goal mouth
+  GOAL_DEPTH: 46, // net depth behind each goal line
   POST_R: 8, // goal post radius (static circles at the goal mouth corners)
 };
 
@@ -25,7 +29,7 @@ export const KICK_RANGE = 8; // extra reach for the kick action
 export const KICK_POWER = 700; // u/s applied to the ball on kick
 export const KICK_COOLDOWN_MS = 260;
 
-export const WIN_SCORE = 3; // first to N goals wins
+export const DEFAULT_RULE = { mode: 'goals', n: 3 };
 export const COUNTDOWN_MS = 5000; // pre-match / kickoff countdown
 export const GOAL_PAUSE_MS = 1800; // celebration pause after each goal
 
@@ -42,20 +46,36 @@ const PP_E = 0.3; // player↔player restitution
 const PLAYER_M = 3;
 const BALL_M = 1;
 
+/** Normalize a rule object coming from the page/peer. */
+export function normalizeRule(raw) {
+  const mode = raw?.mode === 'time' ? 'time' : 'goals';
+  let n = parseInt(raw?.n, 10);
+  if (!Number.isFinite(n) || n < 1) n = mode === 'time' ? 2 : 3;
+  if (mode === 'goals' && n > 10) n = 10;
+  if (mode === 'time' && n > 15) n = 15;
+  return { mode, n };
+}
+
+export function goalLineTop() { return PITCH.GOAL_DEPTH; }
+export function goalLineBottom() { return PITCH.H - PITCH.GOAL_DEPTH; }
+
 /**
  * Fresh match. `now` is the host's Date.now(); phases are driven by phaseLeftMs
  * which the host decrements, so the guest never needs wall-clock sync.
  */
-export function createMatchState(now = Date.now()) {
+export function createMatchState(rule = DEFAULT_RULE, now = Date.now()) {
+  const r = normalizeRule(rule);
   return {
+    rule: r, // {mode, n} — loop-invariant
     phase: 'countdown', // countdown | playing | goal | over
     phaseLeftMs: COUNTDOWN_MS,
+    clockMs: r.mode === 'time' ? r.n * 60 * 1000 : 0, // counts only while playing/goal
     scores: [0, 0],
     lastGoalBy: null, // 0 | 1 | null — side that scored last (for the flash)
-    winner: null, // 0 | 1 | null
+    winner: null, // 0 | 1 | null (null in time-mode also means "draw at expiry")
     players: [
-      { x: PITCH.W * 0.25, y: PITCH.H / 2, vx: 0, vy: 0, kickCd: 0 },
-      { x: PITCH.W * 0.75, y: PITCH.H / 2, vx: 0, vy: 0, kickCd: 0 },
+      { x: PITCH.W / 2, y: PITCH.H * 0.76, vx: 0, vy: 0, kickCd: 0 }, // host, bottom
+      { x: PITCH.W / 2, y: PITCH.H * 0.24, vx: 0, vy: 0, kickCd: 0 }, // guest, top
     ],
     ball: { x: PITCH.W / 2, y: PITCH.H / 2, vx: 0, vy: 0 },
   };
@@ -63,12 +83,12 @@ export function createMatchState(now = Date.now()) {
 
 function kickoffPositions(state) {
   const p = state.players;
-  p[0].x = PITCH.W * 0.25; p[0].y = PITCH.H / 2; p[0].vx = 0; p[0].vy = 0; p[0].kickCd = 0;
-  p[1].x = PITCH.W * 0.75; p[1].y = PITCH.H / 2; p[1].vx = 0; p[1].vy = 0; p[1].kickCd = 0;
+  p[0].x = PITCH.W / 2; p[0].y = PITCH.H * 0.76; p[0].vx = 0; p[0].vy = 0; p[0].kickCd = 0;
+  p[1].x = PITCH.W / 2; p[1].y = PITCH.H * 0.24; p[1].vx = 0; p[1].vy = 0; p[1].kickCd = 0;
   state.ball.x = PITCH.W / 2; state.ball.y = PITCH.H / 2; state.ball.vx = 0; state.ball.vy = 0;
 }
 
-/** Normalize an input object: {mx,my,kick} with mx,my in [-1,1]. */
+/** Normalize an input object: {mx,my,kick} with mx,my in [-1,1] (sender's screen frame). */
 export function normalizeInput(raw) {
   let mx = Number(raw?.mx) || 0;
   let my = Number(raw?.my) || 0;
@@ -78,10 +98,10 @@ export function normalizeInput(raw) {
 }
 
 const POSTS = [
-  { x: 0, y: PITCH.H / 2 - PITCH.GOAL_H / 2 },
-  { x: 0, y: PITCH.H / 2 + PITCH.GOAL_H / 2 },
-  { x: PITCH.W, y: PITCH.H / 2 - PITCH.GOAL_H / 2 },
-  { x: PITCH.W, y: PITCH.H / 2 + PITCH.GOAL_H / 2 },
+  { x: PITCH.W / 2 - PITCH.GOAL_H / 2, y: goalLineTop() },
+  { x: PITCH.W / 2 + PITCH.GOAL_H / 2, y: goalLineTop() },
+  { x: PITCH.W / 2 - PITCH.GOAL_H / 2, y: goalLineBottom() },
+  { x: PITCH.W / 2 + PITCH.GOAL_H / 2, y: goalLineBottom() },
 ];
 
 function collidePosts(obj, isBall) {
@@ -105,7 +125,8 @@ function collidePosts(obj, isBall) {
 }
 
 /**
- * One fixed physics step. `inputs` = [hostInput, guestInput], each normalized.
+ * One fixed physics step. `inputs` = [hostInput, guestInput], each normalized
+ * in the SENDER'S screen frame (host = world frame, guest = mirrored).
  * Mutates and returns the same state object (host keeps it in a ref).
  */
 export function stepMatch(state, inputs, dt, now = Date.now()) {
@@ -114,6 +135,10 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
   // Phase machine first — it gates whether physics runs at all.
   if (phase === 'countdown' || phase === 'goal') {
     state.phaseLeftMs -= dt * 1000;
+    if (state.rule.mode === 'time' && phase === 'goal') {
+      state.clockMs -= dt * 1000;
+      if (state.clockMs <= 0) { state.clockMs = 0; return endByClock(state); }
+    }
     if (state.phaseLeftMs <= 0) {
       if (phase === 'countdown') {
         state.phase = 'playing';
@@ -130,6 +155,12 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
   if (phase === 'over') return state;
 
   // ── playing ────────────────────────────────────────────────────────
+  // Timed rule: the match clock keeps running through play (and goal pauses).
+  if (state.rule.mode === 'time') {
+    state.clockMs -= dt * 1000;
+    if (state.clockMs <= 0) { state.clockMs = 0; return endByClock(state); }
+  }
+
   const damp = 1 - PLAYER_DAMPING * dt;
   for (let i = 0; i < 2; i++) {
     const p = state.players[i];
@@ -221,7 +252,6 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
       ball.y = p.y + ny * minDist;
       const rvn = (ball.vx - p.vx) * nx + (ball.vy - p.vy) * ny;
       if (rvn < 0) {
-        // impulse along normal, ball takes most of it
         const j = -(1 + PB_E) * rvn / (1 / BALL_M + 1 / PLAYER_M);
         ball.vx += (j * nx) / BALL_M;
         ball.vy += (j * ny) / BALL_M;
@@ -231,49 +261,59 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
     }
   }
 
-  // ball ↔ walls (goal mouths stay open)
-  const inMouth = Math.abs(ball.y - PITCH.H / 2) < PITCH.GOAL_H / 2;
+  // ball ↔ walls: side walls always solid; top/bottom walls solid except the mouths
+  const inMouth = Math.abs(ball.x - PITCH.W / 2) < PITCH.GOAL_H / 2;
+  const topLine = goalLineTop();
+  const bottomLine = goalLineBottom();
+  if (ball.x - BALL_R < 0) { ball.x = BALL_R; ball.vx = Math.abs(ball.vx) * WALL_E; }
+  if (ball.x + BALL_R > PITCH.W) { ball.x = PITCH.W - BALL_R; ball.vx = -Math.abs(ball.vx) * WALL_E; }
   if (!inMouth) {
-    if (ball.x - BALL_R < 0) { ball.x = BALL_R; ball.vx = Math.abs(ball.vx) * WALL_E; }
-    if (ball.x + BALL_R > PITCH.W) { ball.x = PITCH.W - BALL_R; ball.vx = -Math.abs(ball.vx) * WALL_E; }
+    if (ball.y - BALL_R < topLine) { ball.y = topLine + BALL_R; ball.vy = Math.abs(ball.vy) * WALL_E; }
+    if (ball.y + BALL_R > bottomLine) { ball.y = bottomLine - BALL_R; ball.vy = -Math.abs(ball.vy) * WALL_E; }
   } else {
-    // inside the mouth the ball flies into the net
-    if (ball.x > PITCH.W + PITCH.GOAL_DEPTH - BALL_R) ball.x = PITCH.W + PITCH.GOAL_DEPTH - BALL_R;
-    if (ball.x < BALL_R - PITCH.GOAL_DEPTH) ball.x = BALL_R - PITCH.GOAL_DEPTH;
+    // inside a mouth the ball flies into the net strip
+    if (ball.y + BALL_R < topLine) ball.y = topLine - PITCH.GOAL_DEPTH + BALL_R;
+    if (ball.y - BALL_R > bottomLine) ball.y = bottomLine + PITCH.GOAL_DEPTH - BALL_R;
   }
-  if (ball.y - BALL_R < 0) { ball.y = BALL_R; ball.vy = Math.abs(ball.vy) * WALL_E; }
-  if (ball.y + BALL_R > PITCH.H) { ball.y = PITCH.H - BALL_R; ball.vy = -Math.abs(ball.vy) * WALL_E; }
   collidePosts(ball, true);
 
-  // goals: ball fully past the line
-  if (ball.x - BALL_R > PITCH.W && inMouth) {
-    state.scores[0] += 1; // host attacks the right goal
+  // goals: ball fully past the line (host attacks TOP, guest attacks BOTTOM)
+  if (ball.y + BALL_R < topLine && inMouth) {
+    state.scores[0] += 1;
     state.lastGoalBy = 0;
-    afterGoal(state, now);
-  } else if (ball.x + BALL_R < 0 && inMouth) {
-    state.scores[1] += 1; // guest attacks the left goal
+    afterGoal(state);
+  } else if (ball.y - BALL_R > bottomLine && inMouth) {
+    state.scores[1] += 1;
     state.lastGoalBy = 1;
-    afterGoal(state, now);
+    afterGoal(state);
   }
 
   return state;
 }
 
-function afterGoal(state, now) {
-  const winner = state.scores[0] >= WIN_SCORE ? 0 : state.scores[1] >= WIN_SCORE ? 1 : null;
-  if (winner !== null) {
-    state.phase = 'over';
-    state.winner = winner;
-    state.phaseLeftMs = 0;
-  } else {
-    state.phase = 'goal';
-    state.phaseLeftMs = GOAL_PAUSE_MS;
+function afterGoal(state) {
+  // First-to-N rule can end the game here; timed rule continues until the clock dies.
+  if (state.rule.mode === 'goals') {
+    if (state.scores[0] >= state.rule.n || state.scores[1] >= state.rule.n) {
+      state.phase = 'over';
+      state.winner = state.scores[0] >= state.rule.n ? 0 : 1;
+      state.phaseLeftMs = 0;
+      return;
+    }
   }
+  state.phase = 'goal';
+  state.phaseLeftMs = GOAL_PAUSE_MS;
+}
+
+function endByClock(state) {
+  state.phase = 'over';
+  state.winner = state.scores[0] === state.scores[1] ? null : state.scores[0] > state.scores[1] ? 0 : 1;
+  state.phaseLeftMs = 0;
 }
 
 /**
  * Compact wire format for the 30 Hz host broadcast (rounded to 1 decimal,
- * ~150 bytes). Guest renders by interpolating between the last two snapshots.
+ * ~170 bytes). Guest renders by blending toward the latest snapshot.
  */
 export function serializeState(state) {
   return {
@@ -292,22 +332,53 @@ export function serializeState(state) {
     s: [state.scores[0], state.scores[1]],
     ph: state.phase === 'playing' ? 1 : state.phase === 'goal' ? 2 : state.phase === 'over' ? 3 : 0,
     pl: Math.max(0, Math.round(state.phaseLeftMs)),
+    cm: Math.max(0, Math.round(state.clockMs || 0)),
     lw: state.lastGoalBy === null ? -1 : state.lastGoalBy,
     w: state.winner === null ? -1 : state.winner,
   };
 }
 
 const PHASE_BY_CODE = ['countdown', 'playing', 'goal', 'over'];
+const RULE_BY_CODE = ['goals', 'time'];
 
 /** Rebuild a renderable state from a host snapshot (guest side). */
 export function deserializeState(d) {
   return {
     phase: PHASE_BY_CODE[d.ph] || 'countdown',
     phaseLeftMs: d.pl || 0,
+    clockMs: d.cm || 0,
     scores: [d.s?.[0] ?? 0, d.s?.[1] ?? 0],
     lastGoalBy: d.lw === -1 || d.lw === undefined ? null : d.lw,
     winner: d.w === -1 || d.w === undefined ? null : d.w,
     players: (d.p || []).map((p) => ({ x: p[0], y: p[1], vx: p[2], vy: p[3], kickCd: 0 })),
     ball: { x: d.b?.[0] ?? PITCH.W / 2, y: d.b?.[1] ?? PITCH.H / 2, vx: d.b?.[2] ?? 0, vy: d.b?.[3] ?? 0 },
   };
+}
+
+/* ── fun-request key helpers (config rides inside the relayed game string,
+      since the server forwards only that field) ───────────────────────── */
+
+const FOOTBALL_OPTIONS = [
+  { key: 'football:goals-1', cfg: { mode: 'goals', n: 1 } },
+  { key: 'football:goals-3', cfg: { mode: 'goals', n: 3 } },
+  { key: 'football:goals-5', cfg: { mode: 'goals', n: 5 } },
+  { key: 'football:time-2', cfg: { mode: 'time', n: 2 } },
+  { key: 'football:time-3', cfg: { mode: 'time', n: 3 } },
+  { key: 'football:time-5', cfg: { mode: 'time', n: 5 } },
+];
+
+export function isFootballOptionKey(key) {
+  return FOOTBALL_OPTIONS.some((o) => o.key === key);
+}
+
+/** 'football:goals-3' → the option entry; null for anything else. */
+export function parseFootballGameKey(key) {
+  return FOOTBALL_OPTIONS.find((o) => o.key === key) || null;
+}
+
+/** Human label for the request card, e.g. 'Football · First to 3'. */
+export function footballLabelFromKey(key) {
+  const o = parseFootballGameKey(key);
+  if (!o) return null;
+  return o.cfg.mode === 'goals' ? `Football · First to ${o.cfg.n}` : `Football · ${o.cfg.n} minutes`;
 }

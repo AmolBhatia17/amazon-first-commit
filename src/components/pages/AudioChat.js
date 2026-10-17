@@ -9,6 +9,9 @@ import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '..
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
 import FootballGame from '../ui/FootballGame';
+import {
+  parseFootballGameKey, footballLabelFromKey,
+} from '../../utils/footballPhysics';
 import AudioVisualizer from '../ui/AudioVisualizer';
 
 // Minimal process polyfill for simple-peer in browser builds
@@ -1029,6 +1032,8 @@ function AudioChat() {
   const [pendingFunRequest, setPendingFunRequest] = useState(null);
   const [acceptedFunGame, setAcceptedFunGame] = useState(null);
   const [amMatchInitiator, setAmMatchInitiator] = useState(false);
+  const [footballCfg, setFootballCfg] = useState(null);
+  const [showFootballOptions, setShowFootballOptions] = useState(false);
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
   const [isMusicHost, setIsMusicHost] = useState(false);
@@ -1324,6 +1329,7 @@ function AudioChat() {
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
     setChessState(createInitialState());
+    setFootballCfg(null);
     setAudioEnabled(true);
     setError('');
     if (localStreamRef.current) {
@@ -1559,6 +1565,7 @@ function AudioChat() {
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
     setChessState(createInitialState());
+    setFootballCfg(null);
     setError('');
     setMessages([]);
     setReplyingTo(null);
@@ -1596,6 +1603,8 @@ function AudioChat() {
     socketService.send({ type: 'fun-exit' });
     setFunToken(0);
     setAcceptedFunGame(null);
+    setFootballCfg(null);
+    setShowFootballOptions(false);
     setChessState(createInitialState());
     setShowFunMenu(false);
     setShowPlayAlongSubmenu(false);
@@ -1612,6 +1621,7 @@ function AudioChat() {
     setReplyingTo(null);
     setFunToken(0);
     setAcceptedFunGame(null);
+    setFootballCfg(null);
     setChessState(createInitialState());
     setError('');
     triggerRemoteBuffer(true);
@@ -1834,10 +1844,19 @@ function AudioChat() {
       setShowFunMenu(false);
       setShowPlayAlongSubmenu(false);
     };
+    // fun-request relays only the game string, so the football rule rides inside it
+    // ("football:goals-3" / "football:time-2"). Parse to {'football', rule} or pass through.
+    const resolveFunGame = (game) => {
+      const fb = parseFootballGameKey(game);
+      if (fb) return { accepted: 'football', cfg: fb.cfg };
+      return { accepted: game, cfg: null };
+    };
     const handleFunAccept = (msg) => {
       const game = msg?.game || 'chess';
+      const resolved = resolveFunGame(game);
       setFunToken(1);
-      setAcceptedFunGame(game);
+      setAcceptedFunGame(resolved.accepted);
+      setFootballCfg(resolved.cfg);
       if (game === 'chess') {
         setAmIWhite(true);
         setChessState(createInitialState());
@@ -1851,6 +1870,7 @@ function AudioChat() {
     const handleFunExit = () => {
       setFunToken(0);
       setAcceptedFunGame(null);
+      setFootballCfg(null);
       setChessState(createInitialState());
       setIsMusicHost(false);
       setShowFunMenu(false);
@@ -1889,7 +1909,12 @@ function AudioChat() {
     };
   }, [isStarted]);
 
-  const funGameLabel = { chess: 'Chess', football: 'Football', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+  const funGameLabel = (() => {
+    const key = pendingFunRequest?.game || '';
+    const footballLabel = footballLabelFromKey(key);
+    if (footballLabel) return footballLabel;
+    return ({ chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[key] || key || '');
+  })();
 
   return (
     <AudioChatContainer>
@@ -1911,14 +1936,17 @@ function AudioChat() {
               </StopButton>
               <StartChatButton
                 onClick={() => {
-                  socketService.send({ type: 'fun-accept', game: pendingFunRequest.game });
+                  const game = pendingFunRequest.game;
+                  const fb = parseFootballGameKey(game);
+                  socketService.send({ type: 'fun-accept', game });
                   setFunToken(1);
-                  setAcceptedFunGame(pendingFunRequest.game);
-                  if (pendingFunRequest.game === 'chess') {
+                  setAcceptedFunGame(fb ? 'football' : game);
+                  setFootballCfg(fb ? fb.cfg : null);
+                  if (game === 'chess') {
                     setAmIWhite(false);
                     setChessState(createInitialState());
                   }
-                  if (pendingFunRequest.game === 'listen-along') {
+                  if (game === 'listen-along') {
                     setIsMusicHost(false);
                   }
                   setPendingFunRequest(null);
@@ -2047,7 +2075,19 @@ function AudioChat() {
                           {showPlayAlongSubmenu && (
                              <FunSubmenu>
                               <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
-                              <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Football</FunMenuItem>
+                              <FunMenuItem onClick={() => setShowFootballOptions((v) => !v)}>
+                                Football
+                              </FunMenuItem>
+                              {showFootballOptions && (
+                                <FunSubmenu>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-1' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 1 goal</FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 3 goals</FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 5 goals</FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-2' }); setShowFunMenu(false); setShowFootballOptions(false); }}>2 minutes</FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>3 minutes</FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>5 minutes</FunMenuItem>
+                                </FunSubmenu>
+                              )}
                               <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
                             </FunSubmenu>
                           )}
@@ -2107,6 +2147,7 @@ function AudioChat() {
                   <FootballGame
                     ref={footballRef}
                     amHost={amMatchInitiator}
+                    cfg={footballCfg}
                     sendViaPeer={sendFootballMsg}
                     onExit={exitFun}
                   />
@@ -2354,7 +2395,19 @@ function AudioChat() {
                             {showPlayAlongSubmenu && (
                               <FunSubmenu>
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
-                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); } }>Football</FunMenuItem>
+                                <FunMenuItem onClick={() => setShowFootballOptions((v) => !v)}>
+                                  Football
+                                </FunMenuItem>
+                                {showFootballOptions && (
+                                  <FunSubmenu>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-1' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 1 goal</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 3 goals</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 5 goals</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-2' }); setShowFunMenu(false); setShowFootballOptions(false); }}>2 minutes</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>3 minutes</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>5 minutes</FunMenuItem>
+                                  </FunSubmenu>
+                                )}
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
                               </FunSubmenu>
                             )}

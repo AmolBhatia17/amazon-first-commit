@@ -1,23 +1,26 @@
 /**
- * Football game UI (HaxBall-style 1v1) over the peer data channel.
- * Self-contained like ChessBoard: the page only passes amHost + callbacks;
- * all simulation, input, rendering and overlays live here.
+ * Football game UI (HaxBall-style 1v1, VERTICAL pitch) over the peer data channel.
+ * Self-contained like ChessBoard: the page passes amHost + cfg + callbacks; all
+ * simulation, input, rendering and overlays live here.
  *
  * Contract with the page:
- *   <FootballGame ref={footballRef} amHost={isInitiator} sendViaPeer={fn} onExit={fn} />
+ *   <FootballGame ref={footballRef} amHost={isInitiator} cfg={rule} sendViaPeer={fn} onExit={fn} />
  *   page peer.on('data') dispatches obj.type starting with 'football' to
  *   footballRef.current.onPeerMessage(obj).
  *
  * Netcode (host-authoritative):
  *   host → guest : { type:'football-state', d:<serializeState()> } @30Hz
- *   guest → host : { type:'football-input', mx, my, kick } on change
+ *   guest → host : { type:'football-input', mx, my, kick } on change, in the
+ *                  guest's SCREEN frame — the host negates it to world frame,
+ *                  because the guest view is rendered 180°-rotated.
  *   either       : { type:'football-rematch' } guest proposes, host resets
  */
 import React, { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
 import styled from 'styled-components';
 import { FiZap } from 'react-icons/fi';
 import {
-  PITCH, PLAYER_R, BALL_R, STEP, WIN_SCORE,
+  PITCH, PLAYER_R, BALL_R, STEP, COUNTDOWN_MS,
+  DEFAULT_RULE, normalizeRule,
   createMatchState, stepMatch, normalizeInput, serializeState, deserializeState,
 } from '../../utils/footballPhysics';
 
@@ -39,15 +42,14 @@ const ScoreRow = styled.div`
   align-items: center;
   gap: 10px;
   width: 100%;
-  max-width: 640px;
   justify-content: center;
 `;
 
 const ScoreCard = styled.div`
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 16px;
+  gap: 8px;
+  padding: 7px 14px;
   border-radius: 999px;
   background: ${({ theme }) => theme.colors.paper};
   border: 1.5px solid ${({ theme }) => theme.colors.ink};
@@ -84,24 +86,31 @@ const MatchTag = styled.span`
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: ${({ theme }) => theme.colors.muted};
+  white-space: nowrap;
 `;
 
-/* ── Pitch canvas ──────────────────────────────────────────────────── */
+/* ── Pitch canvas (portrait, height-driven so it reads big) ────────── */
 const PitchFrame = styled.div`
   position: relative;
-  width: min(100%, 640px);
+  height: min(58vh, 540px);
+  aspect-ratio: ${({ $w, $h }) => `${$w} / ${$h}`};
+  max-width: 100%;
   border: 2px solid ${({ theme }) => theme.colors.ink};
   border-radius: ${({ theme }) => theme.radii.panel};
   background: ${({ theme }) => theme.colors.paper};
   overflow: hidden;
   flex-shrink: 0;
   touch-action: none; /* joystick drags must not scroll the page */
+
+  @media (max-width: 768px) {
+    height: min(46vh, 420px);
+  }
 `;
 
 const PitchCanvas = styled.canvas`
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   outline: none;
 `;
 
@@ -127,15 +136,16 @@ const CountdownNum = styled.span`
 `;
 
 const GoalFlash = styled.span`
-  font-size: clamp(30px, 7vw, 52px);
+  font-size: clamp(24px, 6vw, 40px);
   font-weight: 800;
   letter-spacing: -0.03em;
   color: ${({ theme }) => theme.colors.paper};
   background: ${({ theme }) => theme.colors.ink};
   border: 2px solid ${({ theme }) => theme.colors.paper};
-  padding: 8px 26px;
+  padding: 8px 22px;
   border-radius: ${({ theme }) => theme.radii.bubble};
   animation: goalPop 0.34s cubic-bezier(0.34, 1.4, 0.64, 1);
+  text-align: center;
 
   @keyframes goalPop {
     from { transform: scale(0.7); opacity: 0; }
@@ -144,13 +154,14 @@ const GoalFlash = styled.span`
 `;
 
 const ReadyHint = styled.span`
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   color: ${({ theme }) => theme.colors.ink};
   background: ${({ theme }) => theme.colors.sunTint};
   border: 1.5px solid ${({ theme }) => theme.colors.sunDeep};
   padding: 6px 14px;
   border-radius: 999px;
+  text-align: center;
 `;
 
 /* ── End-of-match card ─────────────────────────────────────────────── */
@@ -167,10 +178,11 @@ const EndCard = styled.div`
 `;
 
 const EndTitle = styled.span`
-  font-size: clamp(24px, 5vw, 40px);
+  font-size: clamp(22px, 5vw, 36px);
   font-weight: 800;
   letter-spacing: -0.03em;
   color: ${({ theme }) => theme.colors.paper};
+  text-align: center;
 `;
 
 const EndScore = styled.span`
@@ -253,17 +265,18 @@ const KickButton = styled.button`
   &:active { transform: scale(0.92); }
 `;
 
-const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, ref) {
-  /* my side in world coords: host = 0 (left), guest = 1 (right) */
+const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, onExit }, ref) {
+  /* my side in world coords: host = 0 (red, bottom), guest = 1 (blue, top) */
   const mySide = amHost ? 0 : 1;
 
   /* ── authoritative sim (host only) ───────────────────────────────── */
   const simRef = useRef(null);          // world state the host mutates
-  const inputRef = useRef({ mx: 0, my: 0, kick: false });   // my input
+  const inputRef = useRef({ mx: 0, my: 0, kick: false });   // kick flag shared by touch
   const remoteInputRef = useRef({ mx: 0, my: 0, kick: false });
   const accRef = useRef(0);
   const lastFrameRef = useRef(0);
   const netAccRef = useRef(0);
+  const cfgRef = useRef(normalizeRule(cfg || DEFAULT_RULE));
 
   /* ── guest-side snapshot buffer ─────────────────────────────────── */
   const snapRef = useRef({ prev: null, prevAt: 0, latest: null, latestAt: 0 });
@@ -272,25 +285,25 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
   const [ui, setUi] = useState({
     scores: [0, 0],
     phase: 'countdown',
-    phaseLeftMs: 5000,
+    phaseLeftMs: COUNTDOWN_MS,
+    clockSecond: -1,
     lastGoalBy: null,
     winner: null,
     waitingRematch: false,
   });
 
   const canvasRef = useRef(null);
-  const wrapRef = useRef(null);
-  const phaseRef = useRef('countdown');
-  phaseRef.current = ui.phase;
 
   const postUi = (state) => {
     setUi((prev) => {
+      const clockSecond = Math.ceil((state.clockMs || 0) / 1000);
       if (
         prev.scores[0] === state.scores[0] &&
         prev.scores[1] === state.scores[1] &&
         prev.phase === state.phase &&
         prev.lastGoalBy === state.lastGoalBy &&
         prev.winner === state.winner &&
+        prev.clockSecond === clockSecond &&
         Math.ceil(prev.phaseLeftMs / 1000) === Math.ceil(state.phaseLeftMs / 1000)
       ) {
         return prev;
@@ -299,6 +312,7 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         scores: [state.scores[0], state.scores[1]],
         phase: state.phase,
         phaseLeftMs: state.phaseLeftMs,
+        clockSecond,
         lastGoalBy: state.lastGoalBy,
         winner: state.winner,
         waitingRematch: state.phase === 'over' ? prev.waitingRematch : false,
@@ -307,9 +321,10 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
   };
 
   const hostReset = () => {
-    simRef.current = createMatchState();
+    simRef.current = createMatchState(cfgRef.current);
     netAccRef.current = 0;
     accRef.current = 0;
+    postUi(simRef.current);
   };
 
   /* ── page → game bridge ─────────────────────────────────────────── */
@@ -329,26 +344,30 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         return;
       }
       if (obj.type === 'football-input') {
-        remoteInputRef.current = normalizeInput(obj);
+        // guest input arrives in the guest's screen frame; the guest view is
+        // 180°-rotated, so world input = negated screen input.
+        remoteInputRef.current = {
+          mx: -(Number(obj.mx) || 0),
+          my: -(Number(obj.my) || 0),
+          kick: !!obj.kick,
+        };
         return;
       }
       if (obj.type === 'football-rematch' && amHost) {
         hostReset();
-        return;
       }
     },
   }));
 
   useEffect(() => {
     if (amHost) hostReset();
-    // guest waits for the first football-state; keep a local kickoff state for the frame before it arrives
-    else simRef.current = createMatchState();
+    // guest waits for the first football-state; a local kickoff state covers the first frames
+    else simRef.current = createMatchState(normalizeRule(cfg || DEFAULT_RULE));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── my input: keyboard ─────────────────────────────────────────── */
+  /* ── my input: keyboard + touch, all in MY SCREEN frame ─────────── */
   const sendRef = useRef(false);
-  const lastSentInputRef = useRef({ mx: 0, my: 0, kick: false });
   const keysRef = useRef(new Set());
   useEffect(() => {
     const isTypingTarget = (e) => {
@@ -356,18 +375,19 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
       const tag = t && t.tagName;
       return tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable);
     };
+    const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+    const SCROLLING_KEYS = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '];
     const onDown = (e) => {
       if (isTypingTarget(e)) return;
       const k = e.key.toLowerCase();
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k) || k === 'x' || k === 'w' || k === 'a' || k === 's' || k === 'd') {
-        if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+      if (SCROLLING_KEYS.includes(k) || MOVE_KEYS.includes(k) || k === 'x') {
+        if (SCROLLING_KEYS.includes(k)) e.preventDefault();
         keysRef.current.add(k);
         sendRef.current = true;
       }
     };
     const onUp = (e) => {
-      keysRef.current.delete(e.key.toLowerCase());
-      sendRef.current = true;
+      if (keysRef.current.delete(e.key.toLowerCase())) sendRef.current = true;
     };
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
@@ -415,7 +435,9 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
   /* ── main frame loop ─────────────────────────────────────────────── */
   useEffect(() => {
     let raf = 0;
-    const computeKeyboard = () => {
+    const lastSentInputRef = { mx: 0, my: 0, kick: false };
+
+    const computeMyInput = () => {
       const k = keysRef.current;
       let mx = 0;
       let my = 0;
@@ -425,19 +447,13 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
       if (k.has('s') || k.has('arrowdown')) my += 1;
       const len = Math.hypot(mx, my);
       if (len > 1) { mx /= len; my /= len; }
-      // touch overrides keyboard while dragging
+      // touch joystick overrides keyboard while dragging
       if (touchRef.current.active) {
         mx = inputRef.current.mx;
         my = inputRef.current.my;
       }
-      // joystick + keyboard can never kick; desktop kick keys live here
-      const kick = isTouch ? inputRef.current.kick || k.has(' ') || k.has('x') : !!k.has(' ') || !!k.has('x');
+      const kick = (isTouch ? inputRef.current.kick : false) || k.has(' ') || k.has('x');
       return { mx, my, kick };
-    };
-
-    const broadcast = () => {
-      const d = serializeState(simRef.current);
-      sendViaPeerSafe({ type: 'football-state', d });
     };
 
     const sendViaPeerSafe = (obj) => {
@@ -449,15 +465,14 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
       const now = ts;
 
       if (amHost) {
-        // fixed-step simulation
+        // fixed-step simulation at 120Hz
         const last = lastFrameRef.current || now;
         lastFrameRef.current = now;
         let dt = (now - last) / 1000;
         if (dt > 0.25) dt = 0.25;
         accRef.current += dt;
 
-        const myInput = computeKeyboard();
-        inputRef.current = myInput;
+        const myInput = computeMyInput();
         while (accRef.current >= STEP) {
           stepMatch(simRef.current, [myInput, remoteInputRef.current], STEP);
           accRef.current -= STEP;
@@ -467,34 +482,41 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         netAccRef.current += dt;
         if (netAccRef.current >= 1 / BROADCAST_HZ) {
           netAccRef.current = 0;
-          broadcast();
+          sendViaPeerSafe({ type: 'football-state', d: serializeState(simRef.current) });
         }
         postUi(simRef.current);
       } else {
-        // guest: advance nothing; render interpolates snapshots (done in draw)
-        const myInput = computeKeyboard();
-        const prev = lastSentInputRef.current;
+        // guest: only relay its screen-frame input
+        const myInput = computeMyInput();
+        const prev = lastSentInputRef;
         if (
           sendRef.current ||
           Math.abs(myInput.mx - prev.mx) > 0.05 ||
           Math.abs(myInput.my - prev.my) > 0.05 ||
           myInput.kick !== prev.kick
         ) {
-          lastSentInputRef.current = { mx: myInput.mx, my: myInput.my, kick: myInput.kick };
+          lastSentInputRef.mx = myInput.mx;
+          lastSentInputRef.my = myInput.my;
+          lastSentInputRef.kick = myInput.kick;
           sendRef.current = false;
-          sendViaPeerSafe({ type: 'football-input', mx: Math.round(myInput.mx * 100) / 100, my: Math.round(myInput.my * 100) / 100, kick: myInput.kick });
+          sendViaPeerSafe({
+            type: 'football-input',
+            mx: Math.round(myInput.mx * 100) / 100,
+            my: Math.round(myInput.my * 100) / 100,
+            kick: myInput.kick,
+          });
         }
       }
 
       draw(now);
     };
 
-    const draw = (now) => {
+    const draw = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const cssW = canvas.clientWidth || PITCH.W;
-      const cssH = Math.round((cssW * PITCH.H) / PITCH.W);
+      const cssH = canvas.clientHeight || Math.round((cssW * PITCH.H) / PITCH.W);
       const pxW = Math.round(cssW * dpr);
       const pxH = Math.round(cssH * dpr);
       if (canvas.width !== pxW || canvas.height !== pxH) {
@@ -502,14 +524,13 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         canvas.height = pxH;
       }
       const ctx = canvas.getContext('2d');
-      const s = pxW / PITCH.W; // world → pixels
 
       const theme = {
         paper: '#ffffff', paperAlt: '#f7f7f8', ink: '#1c1c1e', line: '#e5e5ea',
         blue: '#2d7ff9', red: '#ff3b30', sun: '#f9c74a', muted: '#8a8a8e',
       };
 
-      // guest view: rotate world 180° so I always attack to the right
+      // guest view: rotate world 180° so I always attack upward
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, pxW, pxH);
       ctx.save();
@@ -517,21 +538,21 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         ctx.translate(pxW, pxH);
         ctx.rotate(Math.PI);
       }
-      ctx.scale(s, s);
+      ctx.scale(pxW / PITCH.W, pxH / PITCH.H);
 
-      // pitch base + centre line/markings
-      ctx.fillStyle = theme.paperAlt;
-      ctx.fillRect(0, 0, PITCH.W, PITCH.H);
-      // outer run-off strip in paper
+      // outer run-off strips (paper) along the sides; playing field tinted paperAlt
       ctx.fillStyle = theme.paper;
-      ctx.fillRect(0, 0, PITCH.W, 26);
-      ctx.fillRect(0, PITCH.H - 26, PITCH.W, 26);
+      ctx.fillRect(0, 0, PITCH.W, PITCH.H);
+      ctx.fillStyle = theme.paperAlt;
+      ctx.fillRect(26, 34, PITCH.W - 52, PITCH.H - 68);
       ctx.strokeStyle = theme.line;
       ctx.lineWidth = 3;
-      ctx.strokeRect(26, 26, PITCH.W - 52, PITCH.H - 52);
+      ctx.strokeRect(26, 34, PITCH.W - 52, PITCH.H - 68);
+
+      // centre line (horizontal) + centre circle + dot
       ctx.beginPath();
-      ctx.moveTo(PITCH.W / 2, 26);
-      ctx.lineTo(PITCH.W / 2, PITCH.H - 26);
+      ctx.moveTo(26, PITCH.H / 2);
+      ctx.lineTo(PITCH.W - 26, PITCH.H / 2);
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(PITCH.W / 2, PITCH.H / 2, 64, 0, Math.PI * 2);
@@ -541,34 +562,39 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
       ctx.fillStyle = theme.line;
       ctx.fill();
 
-      // goal mouths (openings in the side walls) + nets
-      const goalY1 = PITCH.H / 2 - PITCH.GOAL_H / 2;
-      const goalY2 = PITCH.H / 2 + PITCH.GOAL_H / 2;
-      const drawGoal = (side) => {
-        // side: 0 = left, 1 = right
-        const xLine = side === 0 ? 0 : PITCH.W;
-        const dir = side === 0 ? -1 : 1;
+      // goal mouths top/bottom (openings in the horizontal walls) + nets
+      const mouthX1 = PITCH.W / 2 - PITCH.GOAL_H / 2;
+      const mouthX2 = PITCH.W / 2 + PITCH.GOAL_H / 2;
+      const drawGoal = (top) => {
+        const yLine = top ? PITCH.GOAL_DEPTH : PITCH.H - PITCH.GOAL_DEPTH;
+        // net strip beyond the line (inside the world)
         ctx.fillStyle = 'rgba(28,28,30,0.08)';
-        ctx.fillRect(side === 0 ? -PITCH.GOAL_DEPTH : PITCH.W, goalY1, PITCH.GOAL_DEPTH, PITCH.GOAL_H);
-        // net hatch
+        ctx.fillRect(mouthX1, top ? 0 : yLine, PITCH.GOAL_H, PITCH.GOAL_DEPTH);
         ctx.strokeStyle = theme.line;
         ctx.lineWidth = 2;
-        for (let gx = 0; gx < PITCH.GOAL_DEPTH; gx += 12) {
+        for (let gx = mouthX1 + 10; gx < mouthX2; gx += 12) {
           ctx.beginPath();
-          ctx.moveTo(xLine + dir * gx, goalY1);
-          ctx.lineTo(xLine + dir * gx, goalY2);
+          ctx.moveTo(gx, top ? 2 : yLine + 2);
+          ctx.lineTo(gx, top ? PITCH.GOAL_DEPTH - 2 : PITCH.H - 2);
           ctx.stroke();
         }
-        // posts
-        for (const py of [goalY1, goalY2]) {
+        // goal line across the mouth
+        ctx.beginPath();
+        ctx.moveTo(mouthX1, yLine);
+        ctx.lineTo(mouthX2, yLine);
+        ctx.strokeStyle = theme.ink;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        // posts at the mouth corners
+        for (const px of [mouthX1, mouthX2]) {
           ctx.beginPath();
-          ctx.arc(xLine, py, PITCH.POST_R, 0, Math.PI * 2);
+          ctx.arc(px, yLine, PITCH.POST_R, 0, Math.PI * 2);
           ctx.fillStyle = theme.ink;
           ctx.fill();
         }
       };
-      drawGoal(0);
-      drawGoal(1);
+      drawGoal(true);
+      drawGoal(false);
 
       // resolve what we render
       let players;
@@ -577,7 +603,7 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         players = simRef.current.players;
         ball = simRef.current.ball;
       } else {
-        // interpolate toward the latest snapshot (85% blend keeps motion smooth at 30Hz)
+        // blend toward the latest snapshot (85% keeps motion smooth at 30Hz)
         const snap = snapRef.current;
         if (!snap.latest) {
           players = simRef.current.players;
@@ -591,14 +617,11 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
             y: mix(a.players[i].y, p.y),
             vx: p.vx, vy: p.vy,
           }));
-          ball = {
-            x: mix(a.ball.x, b2.ball.x),
-            y: mix(a.ball.y, b2.ball.y),
-          };
+          ball = { x: mix(a.ball.x, b2.ball.x), y: mix(a.ball.y, b2.ball.y) };
         }
       }
 
-      // players: [0]=host red on left half, [1]=guest blue on right half (world)
+      // players: [0]=host red bottom half, [1]=guest blue top half (world)
       const colors = [theme.red, theme.blue];
       players.forEach((p, i) => {
         ctx.beginPath();
@@ -610,8 +633,8 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         ctx.stroke();
         // facing dot
         const sp = Math.hypot(p.vx, p.vy);
-        const fx = sp > 5 ? p.vx / sp : (i === 0 ? 1 : -1);
-        const fy = sp > 5 ? p.vy / sp : 0;
+        const fx = sp > 5 ? p.vx / sp : 0;
+        const fy = sp > 5 ? p.vy / sp : (i === 0 ? -1 : 1);
         ctx.beginPath();
         ctx.arc(p.x + fx * PLAYER_R * 0.48, p.y + fy * PLAYER_R * 0.48, 4.5, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
@@ -626,7 +649,6 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = theme.ink;
       ctx.stroke();
-      // ball pentagon dot (classic)
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_R * 0.38, 0, Math.PI * 2);
       ctx.fillStyle = theme.ink;
@@ -641,9 +663,14 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
   }, [amHost]);
 
   /* ── derived UI values ───────────────────────────────────────────── */
+  const rule = normalizeRule(cfg || DEFAULT_RULE);
   const myScore = ui.scores[mySide];
   const theirScore = ui.scores[1 - mySide];
   const countdown = Math.ceil(ui.phaseLeftMs / 1000);
+
+  const matchTag = rule.mode === 'time'
+    ? `${Math.floor(ui.clockSecond / 60)}:${String(Math.max(ui.clockSecond, 0) % 60).padStart(2, '0')} left`
+    : `first to ${rule.n}`;
 
   const onRematch = () => {
     if (amHost) {
@@ -654,15 +681,17 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
     }
   };
 
+  const drawText = ui.winner === null ? 'Draw 🤝' : (ui.winner === mySide ? 'You win! 🏆' : 'Stranger wins');
+
   return (
-    <GameWrap ref={wrapRef}>
+    <GameWrap>
       <ScoreRow>
         <ScoreCard>
           <TeamBead $color={amHost ? '#FF3B30' : '#2D7FF9'} />
           <ScoreName>You</ScoreName>
           <ScoreNum>{myScore}</ScoreNum>
         </ScoreCard>
-        <MatchTag>first to {WIN_SCORE}</MatchTag>
+        <MatchTag>{matchTag}</MatchTag>
         <ScoreCard>
           <ScoreNum>{theirScore}</ScoreNum>
           <ScoreName>Stranger</ScoreName>
@@ -670,7 +699,7 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         </ScoreCard>
       </ScoreRow>
 
-      <PitchFrame
+      <PitchFrame $w={PITCH.W} $h={PITCH.H}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -693,7 +722,7 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
         )}
         {ui.phase === 'over' && (
           <EndCard>
-            <EndTitle>{ui.winner === mySide ? 'You win! 🏆' : 'Stranger wins'}</EndTitle>
+            <EndTitle>{drawText}</EndTitle>
             <EndScore>{myScore} – {theirScore}</EndScore>
             <EndActions>
               {!ui.waitingRematch && (
@@ -711,7 +740,6 @@ const UiRef = forwardRef(function FootballGame({ amHost, sendViaPeer, onExit }, 
               <JoystickKnob $dx={knob.dx} $dy={knob.dy} />
             </JoystickBase>
             <KickButton
-              $held={kickHeld}
               onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onTouchKickDown(); }}
               onPointerUp={(e) => { e.stopPropagation(); onTouchKickUp(); }}
               onPointerCancel={onTouchKickUp}

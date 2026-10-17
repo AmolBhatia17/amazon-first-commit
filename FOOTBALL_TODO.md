@@ -30,6 +30,14 @@ Decisions (confirmed): First to 3 goals · push + kick · Video + Voice pages ·
 
 - Branch created from `main`, package-lock files dirty (from earlier install) — will not commit them.
 - Commit `12524d9` on `feature/football-game`: engine + UI game + Video/Audio wiring, TODO ledger. Server untouched by design.
+- Commit `7d2c70c`: TODO updates after first build pass.
+- **Round 2 (in progress):**
+  - Pitch flipped to VERTICAL (626×1050): goals top/bottom, both players see own goal at bottom attacking up; guest view still 180°-rotated. Height-driven CSS (58vh/540px desktop, 46vh/420px mobile) so it reads bigger in the Live Chat column.
+  - FIXED guest input mirroring bug: guest screen-frame input is now negated by the host (180° view = world input negation). Without this, guest pressed right → moved left.
+  - Initiator rule picker: Fun → Play Along → Football expands to First to 1/3/5 goals · 2/3/5 minutes. Config rides in the relayed `game` key string (`football:goals-3` / `football:time-2`) — zero server changes since the WS relay forwards only that field. Request card label resolves to e.g. "Football · First to 3".
+  - Engine gained `rule {mode,n}` + `clockMs`: timed matches count down through play AND goal pauses, expire → over; leader wins, tie = Draw 🤝 (draws only possible in time mode). Rematch replays with the same rule.
+  - Build verified green (round 2): had to fix a JSX-syntax slip from the option-list generator (`{)}` → `)}` in 4 popover blocks; eslint caught it).
+- Rule options live inside each Play Along submenu: Football toggles an options sub-list (so no new top-level popover state beyond `showFootballOptions`).
 
 ## Notes / gotchas found during work
 
