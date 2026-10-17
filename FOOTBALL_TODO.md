@@ -12,8 +12,8 @@ Decisions (confirmed): First to 3 goals · push + kick · Video + Voice pages ·
 - [x] `VideoChat.js` — menu item Football (desktop + mobile popovers); label map; accept-branch (generic acceptedFunGame); host election via `amMatchInitiator` set in `handleMatch`; side panel render + `$chessMode` shrink; data-channel dispatch `football-*` → `footballRef.onPeerMessage`; `sendFootballMsg` pipe.
 - [x] `AudioChat.js` — identical wiring (import, state, match flag, dispatch, relay, both popovers, label, panel, ChatBox flag).
 - [x] Data-protocol safety — `football-*` messages intercepted before the chat-bubble fallback in both pages' `peer.on('data')`.
-- [ ] Verify backend has zero diffs (fun-request already relays arbitrary `game` values, server/src/index.ts:398-432).
-- [ ] CRA production build passes (react-scripts build running in background on this branch).
+- [x] Verify backend has zero diffs — `git diff --stat main -- server/` shows only `server/package-lock.json` (pre-existing install churn from the local `npm install --prefix server`; server source untouched).
+- [x] CRA production build passes — `react-scripts build` compiled successfully (151.52 kB gzip) after fixing the forwardRef export bug (inner named fn scoped, exported `UiRef` instead).
 
 ## Verification matrix (two windows: 1 normal + 1 incognito)
 
@@ -29,7 +29,10 @@ Decisions (confirmed): First to 3 goals · push + kick · Video + Voice pages ·
 ## Log
 
 - Branch created from `main`, package-lock files dirty (from earlier install) — will not commit them.
+- Commit `12524d9` on `feature/football-game`: engine + UI game + Video/Audio wiring, TODO ledger. Server untouched by design.
 
 ## Notes / gotchas found during work
 
-- (fill as discovered; keep permanent record)
+- `forwardRef(function FootballGame(...))` — the inner name is NOT visible outside; `export default UiRef;` is the correct export (caught by eslint build, fixed).
+- Chat messages over the data channel are raw text; only `chess-move`, `music-control`, and now `football-*` JSON types are intercepted before the "render as chat bubble" fallback — the `type.indexOf('football-') === 0` guard must stay ahead of that fallback.
+- VideoChat's `$chessMode` prop is declared on the styled ChatBox but unused in its CSS; extended it to football anyway for parity.
