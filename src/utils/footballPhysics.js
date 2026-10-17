@@ -35,9 +35,9 @@ export const GOAL_PAUSE_MS = 1800; // celebration pause after each goal
 
 // Per-second physics constants (host integrates at fixed STEP = 1/120 s)
 export const STEP = 1 / 120;
-const PLAYER_THRUST = 1500; // u/s^2 while input held
-const PLAYER_MAX_SPEED = 340; // u/s
-const PLAYER_DAMPING = 4.5; // v *= (1 - k*dt) per axis → terminal ≈ THRUST/k
+export const PLAYER_THRUST = 1500; // u/s^2 while input held
+export const PLAYER_MAX_SPEED = 340; // u/s
+export const PLAYER_DAMPING = 4.5; // v *= (1 - k*dt) per axis → terminal ≈ THRUST/k
 const BALL_DAMPING = 0.8; // ball slows to ~45% speed each second
 const BALL_MAX_SPEED = 900;
 const WALL_E = 0.85; // wall restitution for the ball

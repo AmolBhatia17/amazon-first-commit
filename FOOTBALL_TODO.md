@@ -44,3 +44,17 @@ Decisions (confirmed): First to 3 goals · push + kick · Video + Voice pages ·
 - `forwardRef(function FootballGame(...))` — the inner name is NOT visible outside; `export default UiRef;` is the correct export (caught by eslint build, fixed).
 - Chat messages over the data channel are raw text; only `chess-move`, `music-control`, and now `football-*` JSON types are intercepted before the "render as chat bubble" fallback — the `type.indexOf('football-') === 0` guard must stay ahead of that fallback.
 - VideoChat's `$chessMode` prop is declared on the styled ChatBox but unused in its CSS; extended it to football anyway for parity.
+
+## Guest glitch hunt (round 3) — root causes found & fixed
+
+1. **Fake interpolation (primary):** guest blended `prev→latest` with a *fixed* 85% factor EVERY rAF frame between identical packets → jump-then-freeze stutter; 15% of every packet's motion was permanently discarded → draggy world.
+2. **No client prediction:** guest's own disc waited a full data-channel RTT (~80–150ms) before moving on-screen → input bursts.
+3. **No dead-reckoning:** late packets froze the whole guest view in place.
+4. **Stuck inputs:** alt-tab away while holding a key → `keyup` lost → disc drifted forever on the host (rAF throttling also blocked the "send next frame" path).
+5. **Touch drag escaping the pitch** kept pushing the disc in the last direction.
+
+Fixes (all guest-side, host unchanged except tick 30→45Hz):
+- Snapshot ring buffer of 4 packets with `performance.now()` arrival times; render at `now − 60ms` inside the buffer window with true per-frame interpolation.
+- Dead-reckoning (velocity extrapolation, ≤90ms cap, 0.9 factor) when `rt` runs past the newest snapshot.
+- Client-side prediction of my own disc using the SAME sim constants (thrust 1500, damping 4.5, max 340 — now exported from the engine): instant local response; per-packet spring correction (30% pos, 40/60 velocity blend) toward authority; hard snap if divergence > 90u (kickoff reset).
+- Blur / visibilitychange → immediately send zero input (not frame-flagged); global pointerup/pointercancel listener releases an escaped joystick drag and sends zero.
