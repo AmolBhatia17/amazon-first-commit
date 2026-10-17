@@ -28,8 +28,8 @@ import {
 const BROADCAST_HZ = 45;
 const INTERP_DELAY_MS = 60; // render this far behind realtime for smooth interpolation
 const MAX_EXTRAPOLATE_MS = 90; // dead-reckoning cap when packets run late
-const PREDICT_SNAP_DIST = 90; // authoritative jump bigger than this → teleport-snap
-const PREDICT_CORRECT = 0.3; // per-packet spring correction toward the authoritative pos
+const PREDICT_SNAP_DIST = 130; // authoritative jump bigger than this → teleport-snap
+const PREDICT_CORRECT = 0.35; // per-packet spring correction toward the authoritative pos
 
 const GameWrap = styled.div`
   display: flex;
@@ -551,9 +551,15 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         if (predRef.current && pdt > 0) {
           const pr = predRef.current;
           const myInput = computeMyInput();
+          // Prediction runs in WORLD frame; the guest's screen is the world
+          // rotated 180°, so screen input must be negated to move the disc
+          // the way the player sees it (same transform the host applies).
+          const worldIn = amHost
+            ? { mx: myInput.mx, my: myInput.my }
+            : { mx: -myInput.mx, my: -myInput.my };
           const damp = 1 - PLAYER_DAMPING * pdt;
-          pr.vx += myInput.mx * PLAYER_THRUST * pdt;
-          pr.vy += myInput.my * PLAYER_THRUST * pdt;
+          pr.vx += worldIn.mx * PLAYER_THRUST * pdt;
+          pr.vy += worldIn.my * PLAYER_THRUST * pdt;
           pr.vx *= damp;
           pr.vy *= damp;
           const sp = Math.hypot(pr.vx, pr.vy);
@@ -781,6 +787,14 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
       ctx.arc(ball.x, ball.y, BALL_R * 0.38, 0, Math.PI * 2);
       ctx.fillStyle = theme.ink;
       ctx.fill();
+
+      // dev-only debug probe (dead-code-eliminated in production builds):
+      // lets external CDP tests verify world positions
+      if (process.env.NODE_ENV !== 'production') {
+        window.__fb = window.__fb || {};
+        window.__fb.players = players.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+        window.__fb.ball = { x: Math.round(ball.x), y: Math.round(ball.y) };
+      }
 
       ctx.restore();
     };

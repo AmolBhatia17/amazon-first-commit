@@ -25,7 +25,7 @@ export const PITCH = {
 
 export const PLAYER_R = 30;
 export const BALL_R = 15;
-export const KICK_RANGE = 8; // extra reach for the kick action
+export const KICK_RANGE = 24; // extra reach for the kick action (forgiving touch)
 export const KICK_POWER = 700; // u/s applied to the ball on kick
 export const KICK_COOLDOWN_MS = 260;
 

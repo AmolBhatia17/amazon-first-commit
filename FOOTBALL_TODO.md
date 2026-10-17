@@ -54,6 +54,16 @@ Decisions (confirmed): First to 3 goals · push + kick · Video + Voice pages ·
 5. **Touch drag escaping the pitch** kept pushing the disc in the last direction.
 
 Fixes (all guest-side, host unchanged except tick 30→45Hz):
+**Round-4 root cause & fix (guest keyboard "wrong direction" + "snap back to start" + "ball untouchable"):** the round-3 client prediction advanced the guest's own disc with raw SCREEN-frame input while prediction state lives in WORLD frame (guest renders the world rotated 180°) — predicted disc ran mirrored and fought the host's authoritative spring correction every packet: keys felt inverted, the displayed disc never occupied the host's real position (contact zone never matched what you see → ball untouchable), and divergence crossed the 90u snap threshold → periodic teleport back to the authoritative (≈ kickoff) position.
+- Fix: prediction negates guest screen input to world frame; snap threshold 90→130u; spring correction 0.30→0.35; KICK_RANGE 8→24 for forgiving touch.
+
+**Round-4 verification (real e2e over the running app):** headless Chromium ×2 tabs via raw CDP (no Chrome channel for the Playwright MCP), synthetic clicks + window KeyboardEvents, `window.__fb` world-probe in draw() (dev-only, tree-shaken in prod builds).
+- Role auto-detection: the session initiator is whoever queued first — NOT necessarily the request sender; tests find the host by whose disc moves on its own keypresses.
+- t1 guest→host input: guest ArrowRight → host world players[1].x 313→49/30 (world −x, correct mirror) = PASS
+- t2 guest prediction direction: guest render players[1].x → ~30 under ArrowRight = PASS
+- t3 ball contact: guest disc swept through ball after re-centering (|dx|≤35) → ball (313,525)→(467,674) = PASS
+- Both-end screenshots confirm orientation (own disc bottom, attack up, matching team beads).
+- Harness lessons: Page.navigate not evaluate(location.reload()); headless needs --use-fake-ui-for-media-stream --use-fake-device-for-media-stream (startVideo() gates everything); first t3 failures were test geometry (dx≈48 vs contact 45), which motivated KICK_RANGE.
 - Snapshot ring buffer of 4 packets with `performance.now()` arrival times; render at `now − 60ms` inside the buffer window with true per-frame interpolation.
 - Dead-reckoning (velocity extrapolation, ≤90ms cap, 0.9 factor) when `rt` runs past the newest snapshot.
 - Client-side prediction of my own disc using the SAME sim constants (thrust 1500, damping 4.5, max 340 — now exported from the engine): instant local response; per-packet spring correction (30% pos, 40/60 velocity blend) toward authority; hard snap if divergence > 90u (kickoff reset).
