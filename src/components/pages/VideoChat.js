@@ -8,6 +8,7 @@ import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
+import FootballGame from '../ui/FootballGame';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -1106,6 +1107,7 @@ function VideoChat() {
   const [funToken, setFunToken] = useState(0);
   const [pendingFunRequest, setPendingFunRequest] = useState(null);
   const [acceptedFunGame, setAcceptedFunGame] = useState(null);
+  const [amMatchInitiator, setAmMatchInitiator] = useState(false);
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
   const [isMusicHost, setIsMusicHost] = useState(false);
@@ -1121,6 +1123,7 @@ function VideoChat() {
   const [musicPosition, setMusicPosition] = useState(0);
   const [musicDuration, setMusicDuration] = useState(0);
   const hasRemoteStreamRef = useRef(false);
+  const footballRef = useRef(null);
   const funMenuRef = useRef(null);
   const funMenuMobileRef = useRef(null);
   
@@ -1315,6 +1318,10 @@ function VideoChat() {
             handleIncomingMusicControl(obj);
             return;
           }
+          if (obj && typeof obj.type === 'string' && obj.type.indexOf('football-') === 0) {
+            footballRef.current?.onPeerMessage(obj);
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -1483,6 +1490,17 @@ function VideoChat() {
       }));
     } catch (e) {
       console.error('Music control send error', e);
+    }
+  };
+
+  // Relay for the Football game (FootballGame owns all game logic; the page is a pipe)
+  const sendFootballMsg = (obj) => {
+    const peer = peerConnectionRef.current;
+    if (!peer || typeof peer.send !== 'function') return;
+    try {
+      peer.send(JSON.stringify(obj));
+    } catch (e) {
+      console.error('Football send error', e);
     }
   };
 
@@ -1960,6 +1978,7 @@ function VideoChat() {
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
       triggerRemoteBuffer(false);
+      setAmMatchInitiator(!!data.initiator);
       connectionStartTimeRef.current = Date.now();
       establishmentRecordedRef.current = false;
 
@@ -2085,7 +2104,7 @@ function VideoChat() {
     };
   }, [isStarted]);
 
-  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+  const funGameLabel = { chess: 'Chess', football: 'Football', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
 
   const isFunMode = funToken === 1 || !!acceptedFunGame;
   // On mobile, use the full-screen video layout by default (WhatsApp-style) whenever not in FUN mode.
@@ -2215,6 +2234,9 @@ function VideoChat() {
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
                                   Chess
                                 </FunMenuItem>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football' }); setShowFunMenu(false); }}>
+                                  Football
+                                </FunMenuItem>
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
                                   Truth and Dare
                                 </FunMenuItem>
@@ -2331,6 +2353,9 @@ function VideoChat() {
                                   <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
                                     Chess
                                   </FunMenuItem>
+                                  <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football' }); setShowFunMenu(false); }}>
+                                    Football
+                                  </FunMenuItem>
                                   <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
                                     Truth and Dare
                                   </FunMenuItem>
@@ -2379,7 +2404,7 @@ function VideoChat() {
               </StatusMessage>
             </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
+            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along' || acceptedFunGame === 'football') && (
               <ChessArea>
                 {acceptedFunGame === 'chess' && (
                   <ChessBoard
@@ -2387,6 +2412,14 @@ function VideoChat() {
                     amIWhite={amIWhite}
                     onMove={handleChessMove}
                     disabled={!!chessState.gameOver || (chessState.turn === 'white' && !amIWhite) || (chessState.turn === 'black' && amIWhite)}
+                  />
+                )}
+                {acceptedFunGame === 'football' && (
+                  <FootballGame
+                    ref={footballRef}
+                    amHost={amMatchInitiator}
+                    sendViaPeer={sendFootballMsg}
+                    onExit={exitFun}
                   />
                 )}
                 {acceptedFunGame === 'listen-along' && (
@@ -2563,7 +2596,7 @@ function VideoChat() {
               </ChessArea>
             )}
                    {funToken !== 1 && (
-                   <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess'}>
+                   <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess' || acceptedFunGame === 'football'}>
                      <ChatMessages>
                        {messages.map((message) => (
                          <Message 

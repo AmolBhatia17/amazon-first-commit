@@ -8,6 +8,7 @@ import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
+import FootballGame from '../ui/FootballGame';
 import AudioVisualizer from '../ui/AudioVisualizer';
 
 // Minimal process polyfill for simple-peer in browser builds
@@ -1027,6 +1028,7 @@ function AudioChat() {
   const [funToken, setFunToken] = useState(0);
   const [pendingFunRequest, setPendingFunRequest] = useState(null);
   const [acceptedFunGame, setAcceptedFunGame] = useState(null);
+  const [amMatchInitiator, setAmMatchInitiator] = useState(false);
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
   const [isMusicHost, setIsMusicHost] = useState(false);
@@ -1042,6 +1044,7 @@ function AudioChat() {
   const [musicPosition, setMusicPosition] = useState(0);
   const [musicDuration, setMusicDuration] = useState(0);
   const hasRemoteStreamRef = useRef(false);
+  const footballRef = useRef(null);
   const funMenuRef = useRef(null);
   const funMenuMobileRef = useRef(null);
   
@@ -1226,6 +1229,10 @@ function AudioChat() {
             handleIncomingMusicControl(obj);
             return;
           }
+          if (obj && typeof obj.type === 'string' && obj.type.indexOf('football-') === 0) {
+            footballRef.current?.onPeerMessage(obj);
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -1341,6 +1348,17 @@ function AudioChat() {
       }));
     } catch (e) {
       console.error('Music control send error', e);
+    }
+  };
+
+  // Relay for the Football game (FootballGame owns all game logic; the page is a pipe)
+  const sendFootballMsg = (obj) => {
+    const peer = peerConnectionRef.current;
+    if (!peer || typeof peer.send !== 'function') return;
+    try {
+      peer.send(JSON.stringify(obj));
+    } catch (e) {
+      console.error('Football send error', e);
     }
   };
 
@@ -1766,6 +1784,7 @@ function AudioChat() {
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
       triggerRemoteBuffer(false);
+      setAmMatchInitiator(!!data.initiator);
       connectionStartTimeRef.current = Date.now();
       establishmentRecordedRef.current = false;
 
@@ -1870,7 +1889,7 @@ function AudioChat() {
     };
   }, [isStarted]);
 
-  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+  const funGameLabel = { chess: 'Chess', football: 'Football', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
 
   return (
     <AudioChatContainer>
@@ -2026,8 +2045,9 @@ function AudioChat() {
                             <FiPlay size={18} /> Play Along
                           </FunMenuItem>
                           {showPlayAlongSubmenu && (
-                            <FunSubmenu>
+                             <FunSubmenu>
                               <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
+                              <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Football</FunMenuItem>
                               <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
                             </FunSubmenu>
                           )}
@@ -2073,7 +2093,7 @@ function AudioChat() {
               </ChatStatusPill>
             </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
+            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along' || acceptedFunGame === 'football') && (
               <ChessArea>
                 {acceptedFunGame === 'chess' && (
                   <ChessBoard
@@ -2081,6 +2101,14 @@ function AudioChat() {
                     amIWhite={amIWhite}
                     onMove={handleChessMove}
                     disabled={!!chessState.gameOver || (chessState.turn === 'white' && !amIWhite) || (chessState.turn === 'black' && amIWhite)}
+                  />
+                )}
+                {acceptedFunGame === 'football' && (
+                  <FootballGame
+                    ref={footballRef}
+                    amHost={amMatchInitiator}
+                    sendViaPeer={sendFootballMsg}
+                    onExit={exitFun}
                   />
                 )}
                 {acceptedFunGame === 'listen-along' && (
@@ -2257,7 +2285,7 @@ function AudioChat() {
               </ChessArea>
             )}
             {funToken !== 1 && (
-            <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess'}>
+            <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess' || acceptedFunGame === 'football'}>
               <ChatMessages>
                 {messages.map((message) => (
                   <Message 
@@ -2326,6 +2354,7 @@ function AudioChat() {
                             {showPlayAlongSubmenu && (
                               <FunSubmenu>
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Chess</FunMenuItem>
+                                <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); } }>Football</FunMenuItem>
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); setShowPlayAlongSubmenu(false); }}>Truth and Dare</FunMenuItem>
                               </FunSubmenu>
                             )}
