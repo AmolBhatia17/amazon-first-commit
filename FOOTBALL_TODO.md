@@ -68,3 +68,33 @@ Fixes (all guest-side, host unchanged except tick 30→45Hz):
 - Dead-reckoning (velocity extrapolation, ≤90ms cap, 0.9 factor) when `rt` runs past the newest snapshot.
 - Client-side prediction of my own disc using the SAME sim constants (thrust 1500, damping 4.5, max 340 — now exported from the engine): instant local response; per-packet spring correction (30% pos, 40/60 velocity blend) toward authority; hard snap if divergence > 90u (kickoff reset).
 - Blur / visibilitychange → immediately send zero input (not frame-flagged); global pointerup/pointercancel listener releases an escaped joystick drag and sends zero.
+
+## Round 5 — DeepSeek V4.1 Flash oracle audit — why localhost e2e passed but real use still glitched
+
+The oracle replicated the netcode in a harness and measured what 0-RTT testing hides:
+1. **[root] Render-clock split:** guest's own disc rendered on the `now` clock, ball/opponent on the `now−60ms` interp clock → on-screen ball sits 48–73px behind its real position at realistic RTT (> the 45u contact radius) → visual contact never equals simulated contact ("ball untouchable/invisible"). Localhost measured only 19px — under the radius, which is exactly why CDP t3 passed.
+2. **[core glitch] 4-deep ring (66ms span) with a 60ms render delay = zero headroom:** under packet jitter `rt` escapes the window and the `rt<buf[0].at` branch froze a stale frame verbatim on ~25% of frames (up to 112ms).
+3. **Prediction ignored phases & collisions:** disc free-flew during the goal pause (kickoff read as "returns to start") and could visually sit inside the ball.
+
+Fixes applied to FootballGame.js:
+- 12-deep snapshot ring (~265ms); `rt<buf[0].at` → hold-oldest instead of freeze; guarded `s2.p[i]`/`s2.b` indexing in `seg()` (no more mid-frame render aborts on malformed data).
+- `predHistRef` ring (14 deep, ≥8ms apart): own disc now SAMPLED at the SAME rt as the world — one clock for everything.
+- Prediction gated on the packet-clock phase; non-playing phases lock prediction to the packet position; phase transitions clear snap/pred/hist rings (no blending across kickoff teleports).
+- Prediction clamps the disc against the dead-reckoned ball (PLAYER_R+BALL_R) and opponent (2·PLAYER_R), plus a display-level safety pushOut.
+- Accepted/deferred: UI overlays (countdown/GOAL/score) use the latest packet while the canvas lags 60ms — cosmetic only.
+
+## Round 6 (UNCOMMITTED — user asked not to commit) — user re-tested on same machine, hard-refreshed, both pages: blue player still broken
+
+Symptom triplet mapped to real-world conditions localhost CDP runs never exercise:
+1. **Host-hidden freeze → snap-back (mid-run "glitch to starting position"):** Chrome throttles/pauses rAF of any window not in the foreground. When the RED/host window is covered, its sim AND its 45Hz state stream stop dead; the blue player's world freezes mid-play; when the host window returns, the stale guest buffers + spring correction hard-snap the disc (which lands at/near kickoff) — reads exactly as "automatically glitches and moves to the starting position". (User declined to answer the window-layout question, so this is being fixed defensively regardless.)
+   - Fix: guest watchdog — `lastPacketAtRef`; stream idle > 400ms → `stalled` state: prediction frozen, "Partner's window is hidden — waiting…" overlay; packets resuming after a >700ms gap → clean reseed (buffers cleared, prediction locked to packet) instead of spring-snap.
+2. **Touchscreen laptops were treated as touch devices** (`maxTouchPoints > 0`): joystick UI appeared, and any stray touch/press on the pitch hijacked the disc — "can't move properly".
+   - Fix: `isTouch` now matches `(pointer: coarse)` only — tablets/phones get the joystick; laptops with touchscreens are keyboard devices.
+3. **Kick latency/edge:** kick keydown/keyup now sends the input packet IMMEDIATELY (not frame-flagged) so kicks are never one-frame late; Space and X both work.
+- `computeMyInput` hoisted to component scope (refs-only reads) so the key effect and frame loop share one implementation; pointer handlers re-homed next to it.
+
+## Round 6b — the overlay fired during NORMAL play → root: the host's sim lived INSIDE rAF
+
+The user saw "Partner's window is hidden — waiting…" with both windows open. That overlay only fires when the state stream stalls >400ms — meaning Chrome had genuinely paused the host window's rAF loop (any window not in the foreground gets throttled/occlusion-frozen, even while the user thinks of it as "open"). The host's ENTIRE sim + 45Hz stream lived inside that loop.
+- Fix: moved host sim + broadcast OUT of rAF into `hostTick()` driven by a Blob Web Worker clock (`setInterval(25ms)` in worker — workers are NOT page-visibility throttled; the main thread still processes the postMessage ticks while hidden). rAF now only draws. Fallback to `setInterval` if Worker construction fails. dt clamped at 250ms for worker hiccups.
+- The guest watchdog + waiting overlay stay as a true-failure failsafe (dead peer/channel, hard freeze). With the worker clock it should not fire during normal alternating-window play.

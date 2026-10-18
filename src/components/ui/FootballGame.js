@@ -30,6 +30,10 @@ const INTERP_DELAY_MS = 60; // render this far behind realtime for smooth interp
 const MAX_EXTRAPOLATE_MS = 90; // dead-reckoning cap when packets run late
 const PREDICT_SNAP_DIST = 130; // authoritative jump bigger than this → teleport-snap
 const PREDICT_CORRECT = 0.35; // per-packet spring correction toward the authoritative pos
+const STREAM_STALL_MS = 400; // host stream idle longer than this → its window is hidden/throttled
+const STREAM_RESEED_MS = 700; // stall gap longer than this → treat resume as a clean reseed
+
+const PHASE_CODE_TO_NAME = ['countdown', 'playing', 'goal', 'over'];
 
 const GameWrap = styled.div`
   display: flex;
@@ -284,9 +288,15 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
   const cfgRef = useRef(normalizeRule(cfg || DEFAULT_RULE));
 
   /* ── guest-side netcode ─────────────────────────────────────────── */
-  const snapRef = useRef([]);            // ring of {d, at} host snapshots
-  const predRef = useRef(null);          // client-side prediction of my own disc
+  const snapRef = useRef([]);            // ring of {d, at} host snapshots (12 deep ≈ 265ms)
+  const predRef = useRef(null);          // client-side prediction of my own disc (now-clock)
+  const predHistRef = useRef([]);        // ring of {x,y,vx,vy,at} so the disc can render on the SAME delayed clock as the world
   const predClockRef = useRef(0);        // performance.now of last prediction tick
+  const netPhaseRef = useRef('countdown'); // latest authoritative phase (packet clock, un-delayed)
+  const otherDiscRef = useRef(null);     // {x,y} of the opponent, packet clock, for prediction clamps
+  const ballRef = useRef(null);          // {x,y,vx,vy,at} of the ball, packet clock, for prediction clamps
+  const lastPacketAtRef = useRef(0);     // arrival time of the newest host packet
+  const stalledRef = useRef(false);      // host stream down (its window hidden/throttled)
 
   /* ── render state mirrored to React at low frequency ────────────── */
   const [ui, setUi] = useState({
@@ -297,6 +307,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
     lastGoalBy: null,
     winner: null,
     waitingRematch: false,
+    stalled: false,
   });
 
   const canvasRef = useRef(null);
@@ -343,17 +354,46 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         const now = performance.now();
         const buf = snapRef.current;
         buf.push({ d: obj.d, at: now });
-        if (buf.length > 4) buf.shift();
+        if (buf.length > 12) buf.shift(); // 12 deep @45Hz ≈ 265ms — keeps the interp window interior under jitter
+
         const mine = obj.d.p[mySide]; // [x, y, vx, vy] from the server
+        const phase = PHASE_CODE_TO_NAME[obj.d.ph] || 'playing';
+        const other = obj.d.p[1 - mySide];
+        otherDiscRef.current = other ? { x: other[0], y: other[1] } : otherDiscRef.current;
+        ballRef.current = obj.d.b
+          ? { x: obj.d.b[0], y: obj.d.b[1], vx: obj.d.b[2], vy: obj.d.b[3], at: now }
+          : ballRef.current;
+
+        // host stream came back after a stall (its window was hidden) —
+        // reseed cleanly instead of spring-snapping the disc across the pitch
+        const gap = now - lastPacketAtRef.current;
+        const wasStalled = stalledRef.current;
+        if (wasStalled && gap > STREAM_RESEED_MS) {
+          snapRef.current = [{ d: obj.d, at: now }];
+          if (mine) {
+            predRef.current = { x: mine[0], y: mine[1], vx: mine[2], vy: mine[3] };
+            predHistRef.current = [{ x: mine[0], y: mine[1], vx: mine[2], vy: mine[3], at: now }];
+          }
+          stalledRef.current = false;
+          setUi((prev) => ({ ...prev, stalled: false }));
+        } else if (stalledRef.current) {
+          stalledRef.current = false;
+          setUi((prev) => ({ ...prev, stalled: false }));
+        }
+        lastPacketAtRef.current = now;
+
         if (mine) {
           if (predRef.current) {
             const pr = predRef.current;
             const errX = mine[0] - pr.x;
             const errY = mine[1] - pr.y;
-            if (Math.hypot(errX, errY) > PREDICT_SNAP_DIST) {
-              // kickoff reset / big divergence → snap, don't glide cross-field
+            const hardSnap = Math.hypot(errX, errY) > PREDICT_SNAP_DIST;
+            if (hardSnap || phase !== 'playing') {
+              // kickoff/goal/reset or big divergence → lock to the server, drop history
               pr.x = mine[0]; pr.y = mine[1];
               pr.vx = mine[2]; pr.vy = mine[3];
+              snapRef.current = [{ d: obj.d, at: now }];
+              predHistRef.current = [{ x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, at: now }];
             } else {
               // spring correction; keep most of my local velocity so control feels live
               pr.x += errX * PREDICT_CORRECT;
@@ -363,8 +403,24 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
             }
           } else {
             predRef.current = { x: mine[0], y: mine[1], vx: mine[2], vy: mine[3] };
+            predHistRef.current = [{ x: mine[0], y: mine[1], vx: mine[2], vy: mine[3], at: now }];
           }
         }
+
+        // phase transition → the offsets of the world timeline are discontinuous
+        if (phase !== netPhaseRef.current) {
+          netPhaseRef.current = phase;
+          if (phase === 'countdown' || phase === 'goal' || phase === 'over') {
+            predRef.current = mine
+              ? { x: mine[0], y: mine[1], vx: mine[2], vy: mine[3] }
+              : predRef.current;
+            snapRef.current = [{ d: obj.d, at: now }];
+            predHistRef.current = mine
+              ? [{ x: mine[0], y: mine[1], vx: mine[2], vy: mine[3], at: now }]
+              : predHistRef.current;
+          }
+        }
+
         postUi(deserializeState(obj.d));
         return;
       }
@@ -409,10 +465,20 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         if (SCROLLING_KEYS.includes(k)) e.preventDefault();
         keysRef.current.add(k);
         sendRef.current = true;
+        // kick presses go out immediately (no rAF wait) for snappy kicks
+        if (k === ' ' || k === 'x') {
+          try { sendViaPeer && sendViaPeer({ type: 'football-input', ...computeMyInput() }); } catch (_) {}
+        }
       }
     };
     const onUp = (e) => {
-      if (keysRef.current.delete(e.key.toLowerCase())) sendRef.current = true;
+      const k = e.key.toLowerCase();
+      if (keysRef.current.delete(k)) {
+        sendRef.current = true;
+        if (k === ' ' || k === 'x') {
+          try { sendViaPeer && sendViaPeer({ type: 'football-input', ...computeMyInput() }); } catch (_) {}
+        }
+      }
     };
     // Losing focus (alt-tab / notification press) can leave keys stuck down
     // forever on the host — rAF is throttled while hidden, so send zero input
@@ -456,8 +522,34 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
   const touchRef = useRef({ active: false, id: null, ox: 0, oy: 0 });
   const [knob, setKnob] = useState({ dx: 0, dy: 0, active: false });
   const [kickHeld, setKickHeld] = useState(false);
-  const isTouch = useMemo(() => typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0), []);
+  const isTouch = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches,
+    []
+  );
 
+  // Input is always computed from refs, so a first-render closure stays valid.
+  // Touchscreen laptops count as keyboard devices: only (pointer: coarse) —
+  // tablets/phones — get the joystick and its kick button.
+  const computeMyInput = () => {
+    const k = keysRef.current;
+    let mx = 0;
+    let my = 0;
+    if (k.has('a') || k.has('arrowleft')) mx -= 1;
+    if (k.has('d') || k.has('arrowright')) mx += 1;
+    if (k.has('w') || k.has('arrowup')) my -= 1;
+    if (k.has('s') || k.has('arrowdown')) my += 1;
+    const len = Math.hypot(mx, my);
+    if (len > 1) { mx /= len; my /= len; }
+    // touch joystick overrides keyboard while dragging
+    if (isTouch && touchRef.current.active) {
+      mx = inputRef.current.mx;
+      my = inputRef.current.my;
+    }
+    const kick = (isTouch ? inputRef.current.kick : false) || k.has(' ') || k.has('x');
+    return { mx, my, kick };
+  };
+
+  /* joystick + kick (touch devices only — pointer: coarse) */
   const onPointerDown = (e) => {
     if (!isTouch) return;
     touchRef.current = { active: true, id: e.pointerId, ox: e.clientX, oy: e.clientY };
@@ -487,29 +579,62 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
   const onTouchKickDown = () => { inputRef.current.kick = true; setKickHeld(true); sendRef.current = true; };
   const onTouchKickUp = () => { inputRef.current.kick = false; setKickHeld(false); sendRef.current = true; };
 
+  /* ── host sim + broadcast on the WORKER clock ─────────────────────
+     Chrome freezes/throttles rAF of any window that is not in the
+     foreground, which used to stop the host's simulation and its 45Hz
+     state stream — the guest's world froze and then spring-snapped on
+     resume ("automatically glitches to the starting position"). Worker
+     timers are NOT visibility-throttled, so the host keeps simulating
+     and streaming no matter which window is on top. */
+  const simClockRef = useRef(0);
+  const hostTick = () => {
+    const nowMs = performance.now();
+    const last = simClockRef.current || nowMs;
+    simClockRef.current = nowMs;
+    let dt = (nowMs - last) / 1000;
+    if (dt > 0.25) dt = 0.25; // tab-sleep / worker-hiccup guard
+    if (dt <= 0) return;
+
+    accRef.current += dt;
+    const myInput = computeMyInput();
+    while (accRef.current >= STEP) {
+      stepMatch(simRef.current, [myInput, remoteInputRef.current], STEP);
+      accRef.current -= STEP;
+    }
+
+    netAccRef.current += dt;
+    if (netAccRef.current >= 1 / BROADCAST_HZ) {
+      netAccRef.current = 0;
+      try { sendViaPeer && sendViaPeer({ type: 'football-state', d: serializeState(simRef.current) }); } catch (_) {}
+    }
+    postUi(simRef.current);
+  };
+
+  useEffect(() => {
+    if (!amHost) return undefined;
+    let worker = null;
+    let url = null;
+    try {
+      const src = "setInterval(function(){ postMessage(0); }, 25);"; // ~40Hz clock
+      url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      worker = new Worker(url);
+      worker.onmessage = hostTick;
+    } catch (_) {
+      // Worker unavailable (ancient browser): setInterval fallback, still not rAF
+      const id = setInterval(hostTick, 25);
+      return () => clearInterval(id);
+    }
+    return () => {
+      if (worker) worker.terminate();
+      if (url) URL.revokeObjectURL(url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amHost]);
+
   /* ── main frame loop ─────────────────────────────────────────────── */
   useEffect(() => {
     let raf = 0;
     const lastSentInputRef = { mx: 0, my: 0, kick: false };
-
-    const computeMyInput = () => {
-      const k = keysRef.current;
-      let mx = 0;
-      let my = 0;
-      if (k.has('a') || k.has('arrowleft')) mx -= 1;
-      if (k.has('d') || k.has('arrowright')) mx += 1;
-      if (k.has('w') || k.has('arrowup')) my -= 1;
-      if (k.has('s') || k.has('arrowdown')) my += 1;
-      const len = Math.hypot(mx, my);
-      if (len > 1) { mx /= len; my /= len; }
-      // touch joystick overrides keyboard while dragging
-      if (touchRef.current.active) {
-        mx = inputRef.current.mx;
-        my = inputRef.current.my;
-      }
-      const kick = (isTouch ? inputRef.current.kick : false) || k.has(' ') || k.has('x');
-      return { mx, my, kick };
-    };
 
     const sendViaPeerSafe = (obj) => {
       try { sendViaPeer && sendViaPeer(obj); } catch (_) {}
@@ -520,35 +645,30 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
       const now = ts;
 
       if (amHost) {
-        // fixed-step simulation at 120Hz
-        const last = lastFrameRef.current || now;
-        lastFrameRef.current = now;
-        let dt = (now - last) / 1000;
-        if (dt > 0.25) dt = 0.25;
-        accRef.current += dt;
-
-        const myInput = computeMyInput();
-        while (accRef.current >= STEP) {
-          stepMatch(simRef.current, [myInput, remoteInputRef.current], STEP);
-          accRef.current -= STEP;
-        }
-
-        // 45Hz broadcast
-        netAccRef.current += dt;
-        if (netAccRef.current >= 1 / BROADCAST_HZ) {
-          netAccRef.current = 0;
-          sendViaPeerSafe({ type: 'football-state', d: serializeState(simRef.current) });
-        }
+        // the sim + broadcast run on the WORKER clock (hostTick) — visible
+        // even when this window is hidden/throttled by Chrome. rAF here
+        // only draws.
         postUi(simRef.current);
       } else {
-        // guest: advance my own-disc prediction with the SAME physics constants
-        // (instant response; the host stays authoritative via spring correction)
+        // guest: host-stream watchdog — if the host window is hidden/throttled
+        // its rAF loop pauses and the state stream stops. We freeze our world
+        // (no readahead, no prediction) and show a waiting state; on resume we
+        // reseed cleanly (handled in onPeerMessage) instead of snap-backs.
         const nowMs = performance.now();
+        const idle = lastPacketAtRef.current ? nowMs - lastPacketAtRef.current : 0;
+        const shouldStall = idle > STREAM_STALL_MS && lastPacketAtRef.current > 0;
+        if (shouldStall !== stalledRef.current) {
+          stalledRef.current = shouldStall;
+          setUi((prev) => ({ ...prev, stalled: shouldStall }));
+        }
+
+        // advance my own-disc prediction with the SAME physics constants
+        // (instant response; the host stays authoritative via spring correction)
         const last = predClockRef.current || nowMs;
         predClockRef.current = nowMs;
         let pdt = (nowMs - last) / 1000;
         if (pdt > 0.1) pdt = 0.1;
-        if (predRef.current && pdt > 0) {
+        if (predRef.current && pdt > 0 && netPhaseRef.current === 'playing' && !stalledRef.current) {
           const pr = predRef.current;
           const myInput = computeMyInput();
           // Prediction runs in WORLD frame; the guest's screen is the world
@@ -574,6 +694,55 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
           if (pr.x > PITCH.W - PLAYER_R) { pr.x = PITCH.W - PLAYER_R; pr.vx = Math.min(0, pr.vx); }
           if (pr.y < PLAYER_R) { pr.y = PLAYER_R; pr.vy = Math.max(0, pr.vy); }
           if (pr.y > PITCH.H - PLAYER_R) { pr.y = PITCH.H - PLAYER_R; pr.vy = Math.min(0, pr.vy); }
+
+          // Keep the predicted disc out of the ball and the opponent so the
+          // on-screen disc never visually occupies them between packets.
+          // (Display-level constraint; authority is still the host.)
+          const nowMs = performance.now();
+          const deadReckon = (pos, vel, at) => {
+            const k = Math.min(Math.max(nowMs - at, 0), MAX_EXTRAPOLATE_MS) / 1000 * 0.9;
+            return { x: pos.x + (vel?.x ?? 0) * k, y: pos.y + (vel?.y ?? 0) * k };
+          };
+          const pushOut = (cx, cy, minDist) => {
+            const dx = pr.x - cx;
+            const dy = pr.y - cy;
+            const dist = Math.hypot(dx, dy) || 0.0001;
+            if (dist < minDist) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              pr.x = cx + nx * minDist;
+              pr.y = cy + ny * minDist;
+              const vn = pr.vx * nx + pr.vy * ny;
+              if (vn < 0) { pr.vx -= vn * nx; pr.vy -= vn * ny; }
+            }
+          };
+          if (ballRef.current) {
+            const b = deadReckon(ballRef.current, { x: ballRef.current.vx, y: ballRef.current.vy }, ballRef.current.at);
+            pushOut(b.x, b.y, PLAYER_R + BALL_R);
+          }
+          if (otherDiscRef.current) {
+            pushOut(otherDiscRef.current.x, otherDiscRef.current.y, PLAYER_R * 2);
+          }
+        } else if (predRef.current && netPhaseRef.current !== 'playing') {
+          // outside play the host freezes the world; the disc must not free-fly
+          const pr = predRef.current;
+          pr.vx *= 0.9; pr.vy *= 0.9;
+        }
+
+        // history ring so the disc can be sampled on the SAME delayed clock
+        // as the world (fixes the on-screen disc/ball clock mismatch)
+        if (predRef.current) {
+          const pr = predRef.current;
+          const hist = predHistRef.current;
+          const nowMs = performance.now();
+          const last = hist[hist.length - 1];
+          if (!last || nowMs - last.at >= 8) {
+            hist.push({ x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, at: nowMs });
+            if (hist.length > 14) hist.shift();
+          } else {
+            // refresh the head in place to keep the ring tight
+            last.x = pr.x; last.y = pr.y; last.vx = pr.vx; last.vy = pr.vy;
+          }
         }
 
         // guest: only relay its screen-frame input
@@ -694,21 +863,24 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         ball = simRef.current.ball;
       } else {
         // ── guest render resolution ──────────────────────────────────
-        // Time-based interpolation between host snapshots (INTERP_DELAY behind
-        // realtime), dead-reckoning on late packets, client prediction for my disc.
+        // ONE clock for everything: both the world and my own disc are
+        // sampled at rt = now − INTERP_DELAY_MS, so on-screen contact
+        // geometry matches the host's simulation geometry.
         const buf = snapRef.current;
+        const hist = predHistRef.current;
+        const rt = performance.now() - INTERP_DELAY_MS;
         const lerp = (a, b, t) => a + (b - a) * t;
         const seg = (s1, s2, alpha) => ({
           players: s1.p.map((p, i) => ({
-            x: lerp(p[0], s2.p[i][0], alpha),
-            y: lerp(p[1], s2.p[i][1], alpha),
-            vx: s2.p[i][2],
-            vy: s2.p[i][3],
+            x: lerp(p[0], s2.p[i]?.[0] ?? p[0], alpha),
+            y: lerp(p[1], s2.p[i]?.[1] ?? p[1], alpha),
+            vx: s2.p[i]?.[2] ?? 0,
+            vy: s2.p[i]?.[3] ?? 0,
           })),
-          ball: { x: lerp(s1.b[0], s2.b[0], alpha), y: lerp(s1.b[1], s2.b[1], alpha), vx: s2.b[2], vy: s2.b[3] },
+          ball: { x: lerp(s1.b[0], s2.b?.[0] ?? s1.b[0], alpha), y: lerp(s1.b[1], s2.b?.[1] ?? s1.b[1], alpha), vx: s2.b?.[2] ?? 0, vy: s2.b?.[3] ?? 0 },
         });
         const extrap = (s, overMs) => {
-          const k = Math.min(overMs, MAX_EXTRAPOLATE_MS) / 1000 * 0.9;
+          const k = Math.min(Math.max(overMs, 0), MAX_EXTRAPOLATE_MS) / 1000 * 0.9;
           return {
             players: s.p.map((p) => ({ x: p[0] + p[2] * k, y: p[1] + p[3] * k, vx: p[2], vy: p[3] })),
             ball: { x: s.b[0] + s.b[2] * k, y: s.b[1] + s.b[3] * k, vx: s.b[2], vy: s.b[3] },
@@ -719,9 +891,11 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         if (buf.length === 1) {
           world = extrap(buf[0].d, performance.now() - buf[0].at);
         } else if (buf.length >= 2) {
-          const rt = performance.now() - INTERP_DELAY_MS;
           if (rt < buf[0].at) {
-            world = extrap(buf[0].d, rt - buf[0].at < 0 ? 0 : 0); // hold behind earliest
+            // render time precedes the oldest kept snapshot (packet bunching
+            // after a stall). The ring is 12-deep (~265ms) so this is rare;
+            // hold the oldest frame instead of freezing forever.
+            world = extrap(buf[0].d, 0);
           } else {
             let idx = -1;
             for (let i = 0; i < buf.length - 1; i++) {
@@ -741,13 +915,60 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         }
 
         if (world) {
-          // my own disc comes from client prediction; the rest from the timeline
           players = world.players;
           ball = world.ball;
-          if (predRef.current) {
+          // my own disc: sampled from prediction history at the SAME rt that
+          // drives the world — keeps on-screen contact == simulated contact
+          if (hist.length > 0 && predRef.current) {
+            let mine = null;
+            if (rt <= hist[0].at) {
+              const h = hist[0];
+              mine = { x: h.x, y: h.y, vx: h.vx, vy: h.vy };
+            } else {
+              let matched = false;
+              for (let i = 0; i < hist.length - 1; i++) {
+                if (rt >= hist[i].at && rt < hist[i + 1].at) {
+                  const a = hist[i];
+                  const b3 = hist[i + 1];
+                  const span = Math.max(b3.at - a.at, 1);
+                  const alpha = (rt - a.at) / span;
+                  mine = {
+                    x: lerp(a.x, b3.x, alpha),
+                    y: lerp(a.y, b3.y, alpha),
+                    vx: b3.vx, vy: b3.vy,
+                  };
+                  matched = true;
+                  break;
+                }
+              }
+              if (!matched) {
+                // rt beyond the newest history point → extrapolate from it
+                const h = hist[hist.length - 1];
+                const k = Math.min(rt - h.at, MAX_EXTRAPOLATE_MS) / 1000 * 0.9;
+                mine = { x: h.x + h.vx * k, y: h.y + h.vy * k, vx: h.vx, vy: h.vy };
+              }
+            }
+            players[mySide] = mine;
+          } else if (predRef.current) {
             const pr = predRef.current;
             players[mySide] = { x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy };
           }
+
+          // display-level safety: my disc never visually overlaps ball/opponent
+          const mine = players[mySide];
+          const pushOut = (cx, cy, minDist) => {
+            const dx = mine.x - cx;
+            const dy = mine.y - cy;
+            const dist = Math.hypot(dx, dy) || 0.0001;
+            if (dist < minDist) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              mine.x = cx + nx * minDist;
+              mine.y = cy + ny * minDist;
+            }
+          };
+          pushOut(world.ball.x, world.ball.y, PLAYER_R + BALL_R);
+          pushOut(world.players[1 - mySide]?.x ?? -1000, world.players[1 - mySide]?.y ?? -1000, PLAYER_R * 2);
         } else {
           // no snapshots yet → static kickoff view
           players = simRef.current.players;
@@ -794,6 +1015,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         window.__fb = window.__fb || {};
         window.__fb.players = players.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
         window.__fb.ball = { x: Math.round(ball.x), y: Math.round(ball.y) };
+        window.__fb.stalled = !!stalledRef.current;
       }
 
       ctx.restore();
@@ -860,6 +1082,11 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
             <GoalFlash>
               {ui.lastGoalBy === mySide ? 'GOAL! You scored 🎉' : 'Goal by Stranger'}
             </GoalFlash>
+          </CenterOverlay>
+        )}
+        {ui.stalled && ui.phase !== 'over' && (
+          <CenterOverlay $dim>
+            <ReadyHint>Partner's window is hidden — waiting…</ReadyHint>
           </CenterOverlay>
         )}
         {ui.phase === 'over' && (
