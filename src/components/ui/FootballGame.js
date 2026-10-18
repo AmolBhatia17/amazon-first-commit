@@ -15,14 +15,14 @@
  *                  because the guest view is rendered 180°-rotated.
  *   either       : { type:'football-rematch' } guest proposes, host resets
  */
-import React, { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
 import styled from 'styled-components';
 import { FiZap } from 'react-icons/fi';
 import {
   PITCH, PLAYER_R, PLAYER_THRUST, PLAYER_MAX_SPEED, PLAYER_DAMPING,
   BALL_R, STEP, COUNTDOWN_MS,
   DEFAULT_RULE, normalizeRule,
-  createMatchState, stepMatch, normalizeInput, serializeState, deserializeState,
+  createMatchState, stepMatch, serializeState, deserializeState,
 } from '../../utils/footballPhysics';
 
 const BROADCAST_HZ = 45;
@@ -271,6 +271,7 @@ const KickButton = styled.button`
   color: ${({ theme }) => theme.colors.ink};
   border: 1.5px solid ${({ theme }) => theme.colors.ink};
   pointer-events: auto;
+  transform: scale(${({ $held }) => ($held ? '0.92' : '1')});
   &:active { transform: scale(0.92); }
 `;
 
@@ -283,7 +284,6 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
   const inputRef = useRef({ mx: 0, my: 0, kick: false });   // kick flag shared by touch
   const remoteInputRef = useRef({ mx: 0, my: 0, kick: false });
   const accRef = useRef(0);
-  const lastFrameRef = useRef(0);
   const netAccRef = useRef(0);
   const cfgRef = useRef(normalizeRule(cfg || DEFAULT_RULE));
 
@@ -305,6 +305,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
     phaseLeftMs: COUNTDOWN_MS,
     clockSecond: -1,
     lastGoalBy: null,
+    lastGoalOwn: false,
     winner: null,
     waitingRematch: false,
     stalled: false,
@@ -320,6 +321,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         prev.scores[1] === state.scores[1] &&
         prev.phase === state.phase &&
         prev.lastGoalBy === state.lastGoalBy &&
+        prev.lastGoalOwn === state.lastGoalOwn &&
         prev.winner === state.winner &&
         prev.clockSecond === clockSecond &&
         Math.ceil(prev.phaseLeftMs / 1000) === Math.ceil(state.phaseLeftMs / 1000)
@@ -332,6 +334,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         phaseLeftMs: state.phaseLeftMs,
         clockSecond,
         lastGoalBy: state.lastGoalBy,
+        lastGoalOwn: state.lastGoalOwn,
         winner: state.winner,
         waitingRematch: state.phase === 'over' ? prev.waitingRematch : false,
       };
@@ -450,7 +453,49 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
   /* ── my input: keyboard + touch, all in MY SCREEN frame ─────────── */
   const sendRef = useRef(false);
   const keysRef = useRef(new Set());
+
+  /* joystick (touch) */
+  const touchRef = useRef({ active: false, id: null, ox: 0, oy: 0 });
+  const [knob, setKnob] = useState({ dx: 0, dy: 0, active: false });
+  const [kickHeld, setKickHeld] = useState(false);
+  const isTouch = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches,
+    []
+  );
+
+  // Input is always computed from refs, so a first-render closure stays valid.
+  // Touchscreen laptops count as keyboard devices: only (pointer: coarse) —
+  // tablets/phones — get the joystick and its kick button.
+  const computeMyInput = useCallback(() => {
+    const k = keysRef.current;
+    let mx = 0;
+    let my = 0;
+    if (k.has('a') || k.has('arrowleft')) mx -= 1;
+    if (k.has('d') || k.has('arrowright')) mx += 1;
+    if (k.has('w') || k.has('arrowup')) my -= 1;
+    if (k.has('s') || k.has('arrowdown')) my += 1;
+    const len = Math.hypot(mx, my);
+    if (len > 1) { mx /= len; my /= len; }
+    // touch joystick overrides keyboard while dragging
+    if (isTouch && touchRef.current.active) {
+      mx = inputRef.current.mx;
+      my = inputRef.current.my;
+    }
+    const kick = (isTouch ? inputRef.current.kick : false) || k.has(' ') || k.has('x');
+    return { mx, my, kick };
+  }, [isTouch]);
+
+  // The parent recreates sendViaPeer every render, but it only reads refs
+  // internally, so mirroring the latest one into a ref keeps the listener
+  // effect's closure valid without re-attaching listeners on parent renders.
+  const sendViaPeerRef = useRef(sendViaPeer);
+  sendViaPeerRef.current = sendViaPeer;
+
   useEffect(() => {
+    const sendSafe = (obj) => {
+      const send = sendViaPeerRef.current;
+      try { send && send(obj); } catch (_) {}
+    };
     const isTypingTarget = (e) => {
       const t = e.target;
       const tag = t && t.tagName;
@@ -467,7 +512,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         sendRef.current = true;
         // kick presses go out immediately (no rAF wait) for snappy kicks
         if (k === ' ' || k === 'x') {
-          try { sendViaPeer && sendViaPeer({ type: 'football-input', ...computeMyInput() }); } catch (_) {}
+          sendSafe({ type: 'football-input', ...computeMyInput() });
         }
       }
     };
@@ -476,16 +521,14 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
       if (keysRef.current.delete(k)) {
         sendRef.current = true;
         if (k === ' ' || k === 'x') {
-          try { sendViaPeer && sendViaPeer({ type: 'football-input', ...computeMyInput() }); } catch (_) {}
+          sendSafe({ type: 'football-input', ...computeMyInput() });
         }
       }
     };
     // Losing focus (alt-tab / notification press) can leave keys stuck down
     // forever on the host — rAF is throttled while hidden, so send zero input
     // immediately instead of flagging the next frame.
-    const sendZero = () => {
-      try { sendViaPeer && sendViaPeer({ type: 'football-input', mx: 0, my: 0, kick: false }); } catch (_) {}
-    };
+    const sendZero = () => sendSafe({ type: 'football-input', mx: 0, my: 0, kick: false });
     const onBlur = () => {
       if (keysRef.current.size === 0) return;
       keysRef.current.clear();
@@ -516,38 +559,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
     };
-  }, []);
-
-  /* joystick (touch) */
-  const touchRef = useRef({ active: false, id: null, ox: 0, oy: 0 });
-  const [knob, setKnob] = useState({ dx: 0, dy: 0, active: false });
-  const [kickHeld, setKickHeld] = useState(false);
-  const isTouch = useMemo(
-    () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches,
-    []
-  );
-
-  // Input is always computed from refs, so a first-render closure stays valid.
-  // Touchscreen laptops count as keyboard devices: only (pointer: coarse) —
-  // tablets/phones — get the joystick and its kick button.
-  const computeMyInput = () => {
-    const k = keysRef.current;
-    let mx = 0;
-    let my = 0;
-    if (k.has('a') || k.has('arrowleft')) mx -= 1;
-    if (k.has('d') || k.has('arrowright')) mx += 1;
-    if (k.has('w') || k.has('arrowup')) my -= 1;
-    if (k.has('s') || k.has('arrowdown')) my += 1;
-    const len = Math.hypot(mx, my);
-    if (len > 1) { mx /= len; my /= len; }
-    // touch joystick overrides keyboard while dragging
-    if (isTouch && touchRef.current.active) {
-      mx = inputRef.current.mx;
-      my = inputRef.current.my;
-    }
-    const kick = (isTouch ? inputRef.current.kick : false) || k.has(' ') || k.has('x');
-    return { mx, my, kick };
-  };
+  }, [computeMyInput]);
 
   /* joystick + kick (touch devices only — pointer: coarse) */
   const onPointerDown = (e) => {
@@ -1080,7 +1092,9 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
         {ui.phase === 'goal' && (
           <CenterOverlay $dim>
             <GoalFlash>
-              {ui.lastGoalBy === mySide ? 'GOAL! You scored 🎉' : 'Goal by Stranger'}
+              {ui.lastGoalOwn
+                ? 'Own goal 😅'
+                : (ui.lastGoalBy === mySide ? 'GOAL! You scored 🎉' : 'Goal by Stranger')}
             </GoalFlash>
           </CenterOverlay>
         )}
@@ -1109,6 +1123,7 @@ const UiRef = forwardRef(function UiRefFootballGame({ amHost, cfg, sendViaPeer, 
               <JoystickKnob $dx={knob.dx} $dy={knob.dy} />
             </JoystickBase>
             <KickButton
+              $held={kickHeld}
               onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onTouchKickDown(); }}
               onPointerUp={(e) => { e.stopPropagation(); onTouchKickUp(); }}
               onPointerCancel={onTouchKickUp}

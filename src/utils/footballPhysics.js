@@ -71,7 +71,9 @@ export function createMatchState(rule = DEFAULT_RULE, now = Date.now()) {
     phaseLeftMs: COUNTDOWN_MS,
     clockMs: r.mode === 'time' ? r.n * 60 * 1000 : 0, // counts only while playing/goal
     scores: [0, 0],
-    lastGoalBy: null, // 0 | 1 | null — side that scored last (for the flash)
+    lastGoalBy: null, // 0 | 1 | null — side credited with the last goal (for the flash)
+    lastGoalOwn: false, // true when the conceding side's touch sent it into their own net
+    lastTouchBy: null, // 0 | 1 | null — side that last kicked or bumped the ball
     winner: null, // 0 | 1 | null (null in time-mode also means "draw at expiry")
     players: [
       { x: PITCH.W / 2, y: PITCH.H * 0.76, vx: 0, vy: 0, kickCd: 0 }, // host, bottom
@@ -86,6 +88,8 @@ function kickoffPositions(state) {
   p[0].x = PITCH.W / 2; p[0].y = PITCH.H * 0.76; p[0].vx = 0; p[0].vy = 0; p[0].kickCd = 0;
   p[1].x = PITCH.W / 2; p[1].y = PITCH.H * 0.24; p[1].vx = 0; p[1].vy = 0; p[1].kickCd = 0;
   state.ball.x = PITCH.W / 2; state.ball.y = PITCH.H / 2; state.ball.vx = 0; state.ball.vy = 0;
+  state.lastTouchBy = null;
+  state.lastGoalOwn = false;
 }
 
 /** Normalize an input object: {mx,my,kick} with mx,my in [-1,1] (sender's screen frame). */
@@ -223,6 +227,7 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
       ball.vx = nx * KICK_POWER + p.vx * 0.5;
       ball.vy = ny * KICK_POWER + p.vy * 0.5;
       p.kickCd = KICK_COOLDOWN_MS;
+      state.lastTouchBy = i;
     }
   }
 
@@ -248,6 +253,7 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
     if (dist < minDist) {
       const nx = dx / dist;
       const ny = dy / dist;
+      state.lastTouchBy = i;
       ball.x = p.x + nx * minDist;
       ball.y = p.y + ny * minDist;
       const rvn = (ball.vx - p.vx) * nx + (ball.vy - p.vy) * ny;
@@ -281,10 +287,12 @@ export function stepMatch(state, inputs, dt, now = Date.now()) {
   if (ball.y + BALL_R < topLine && inMouth) {
     state.scores[0] += 1;
     state.lastGoalBy = 0;
+    state.lastGoalOwn = state.lastTouchBy === 1; // guest defends the top goal
     afterGoal(state);
   } else if (ball.y - BALL_R > bottomLine && inMouth) {
     state.scores[1] += 1;
     state.lastGoalBy = 1;
+    state.lastGoalOwn = state.lastTouchBy === 0; // host defends the bottom goal
     afterGoal(state);
   }
 
@@ -334,12 +342,12 @@ export function serializeState(state) {
     pl: Math.max(0, Math.round(state.phaseLeftMs)),
     cm: Math.max(0, Math.round(state.clockMs || 0)),
     lw: state.lastGoalBy === null ? -1 : state.lastGoalBy,
+    og: state.lastGoalOwn ? 1 : 0,
     w: state.winner === null ? -1 : state.winner,
   };
 }
 
 const PHASE_BY_CODE = ['countdown', 'playing', 'goal', 'over'];
-const RULE_BY_CODE = ['goals', 'time'];
 
 /** Rebuild a renderable state from a host snapshot (guest side). */
 export function deserializeState(d) {
@@ -349,6 +357,7 @@ export function deserializeState(d) {
     clockMs: d.cm || 0,
     scores: [d.s?.[0] ?? 0, d.s?.[1] ?? 0],
     lastGoalBy: d.lw === -1 || d.lw === undefined ? null : d.lw,
+    lastGoalOwn: d.og === 1,
     winner: d.w === -1 || d.w === undefined ? null : d.w,
     players: (d.p || []).map((p) => ({ x: p[0], y: p[1], vx: p[2], vy: p[3], kickCd: 0 })),
     ball: { x: d.b?.[0] ?? PITCH.W / 2, y: d.b?.[1] ?? PITCH.H / 2, vx: d.b?.[2] ?? 0, vy: d.b?.[3] ?? 0 },

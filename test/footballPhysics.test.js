@@ -293,6 +293,7 @@ describe('stepMatch — scoring and rules', () => {
     steps(s, 1);
     expect(s.scores).toEqual([1, 0]);
     expect(s.lastGoalBy).toBe(0);
+    expect(s.lastGoalOwn).toBe(false); // no touch recorded → normal goal
     expect(s.phase).toBe('goal');
     expect(s.phaseLeftMs).toBe(GOAL_PAUSE_MS);
   });
@@ -378,6 +379,48 @@ describe('stepMatch — scoring and rules', () => {
   });
 });
 
+describe('stepMatch — own goals', () => {
+  it("flags an own goal when the defender's kick sends it into their own net", () => {
+    // host kicks straight down into their own (bottom) goal
+    const s = playingState(DEFAULT_RULE, { x: PITCH.W / 2, y: PITCH.H * 0.76 + 50 });
+    steps(s, 1, [{ mx: 0, my: 0, kick: true }, ZERO]);
+    expect(s.lastTouchBy).toBe(0);
+    steps(s, 60); // ball flies into the bottom mouth
+    expect(s.scores).toEqual([0, 1]);
+    expect(s.lastGoalBy).toBe(1);
+    expect(s.lastGoalOwn).toBe(true);
+    expect(s.phase).toBe('goal');
+  });
+
+  it('does not flag a goal scored by the attacking side', () => {
+    // host kicks up the middle into the top goal; clear the guest's path
+    const s = playingState(DEFAULT_RULE, { x: PITCH.W / 2, y: PITCH.H * 0.76 - 50 });
+    s.players[1].x = 100;
+    steps(s, 1, [{ mx: 0, my: 0, kick: true }, ZERO]);
+    expect(s.lastTouchBy).toBe(0);
+    steps(s, 300); // ball flies up into the top mouth (~260 steps with per-step damping)
+    expect(s.scores).toEqual([1, 0]);
+    expect(s.lastGoalBy).toBe(0);
+    expect(s.lastGoalOwn).toBe(false);
+  });
+
+  it('counts a bump as a touch', () => {
+    // ball starts overlapping the host disc → pushed out, touch attributed
+    const s = playingState(DEFAULT_RULE, { x: PITCH.W / 2 + 40, y: PITCH.H * 0.76 });
+    steps(s, 1);
+    expect(s.lastTouchBy).toBe(0);
+  });
+
+  it('clears the toucher on kickoff', () => {
+    const s = playingState(DEFAULT_RULE, { x: PITCH.W / 2, y: goalLineTop() - 20 });
+    steps(s, 1); // goal → celebration
+    const needed = Math.ceil(GOAL_PAUSE_MS / 1000 / STEP);
+    steps(s, needed + 1); // kickoff reset
+    expect(s.lastTouchBy).toBeNull();
+    expect(s.lastGoalOwn).toBe(false);
+  });
+});
+
 describe('serializeState / deserializeState', () => {
   it('round-trips a fresh match snapshot', () => {
     const s = createMatchState(DEFAULT_RULE);
@@ -418,6 +461,18 @@ describe('serializeState / deserializeState', () => {
     expect(d.winner).toBeNull();
   });
 
+  it('round-trips the own-goal flag', () => {
+    const s = playingState(DEFAULT_RULE, { x: PITCH.W / 2, y: goalLineTop() - 20 });
+    steps(s, 1);
+    expect(s.lastGoalOwn).toBe(false);
+    let d = deserializeState(serializeState(s));
+    expect(d.lastGoalBy).toBe(0);
+    expect(d.lastGoalOwn).toBe(false);
+    s.lastGoalOwn = true;
+    d = deserializeState(serializeState(s));
+    expect(d.lastGoalOwn).toBe(true);
+  });
+
   it('never emits a negative phaseLeftMs or clockMs', () => {
     const s = playingState(DEFAULT_RULE, { x: PITCH.W / 2, y: PITCH.H / 2 });
     s.phaseLeftMs = -3;
@@ -434,6 +489,7 @@ describe('serializeState / deserializeState', () => {
     expect(d.players).toEqual([]);
     expect(d.ball).toMatchObject({ x: PITCH.W / 2, y: PITCH.H / 2, vx: 0, vy: 0 });
     expect(d.lastGoalBy).toBeNull();
+    expect(d.lastGoalOwn).toBe(false);
     expect(d.winner).toBeNull();
   });
 });
