@@ -451,7 +451,7 @@ dropped after 30 seconds.
 |---|---|
 | `npm start` | React dev server on :3000 with hot reload |
 | `npm run build` | Production build into `build/` |
-| `npm test` | CRA test runner |
+| `npm test` | Jest test runner (tests in `test/`) |
 | `npm run dev --prefix server` | Backend with `ts-node-dev` (hot reload) |
 | `npm run build --prefix server` | Compile TypeScript to `server/dist` |
 | `npm start --prefix server` | Run the compiled backend |
