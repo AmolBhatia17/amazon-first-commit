@@ -5,6 +5,7 @@ import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircl
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { useCallModeSwitch, showVideoTrack } from '../../utils/useCallModeSwitch';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
@@ -1065,6 +1066,32 @@ function AudioChat() {
   const stunServerIndexRef = useRef(0);
   const connectionStartTimeRef = useRef(null);
   const establishmentRecordedRef = useRef(false);
+  const remoteVideoRef = useRef(null);
+  const localVideoRef = useRef(null);
+
+  // Only rendered after a live switch to video; tracks can land after the elements mount
+  const attachCallVideo = () => {
+    showVideoTrack(localVideoRef.current, localStreamRef.current?.getVideoTracks()[0]);
+    showVideoTrack(remoteVideoRef.current, remoteStreamRef.current?.getVideoTracks()[0]);
+  };
+
+  const {
+    callMode,
+    incomingVideoRequest,
+    awaitingVideoAnswer,
+    switchNotice,
+    switchToVoice,
+    requestVideo,
+    acceptVideoRequest,
+    declineVideoRequest,
+    handleCallModeMessage,
+    resetCallMode,
+  } = useCallModeSwitch({
+    peerRef: peerConnectionRef,
+    localStreamRef,
+    initialMode: 'voice',
+    onLocalVideoChange: attachCallVideo,
+  });
 
   const recordEstablishmentTime = () => {
     if (establishmentRecordedRef.current) return;
@@ -1193,8 +1220,10 @@ function AudioChat() {
         setRemoteStreamForVisualizer(remoteStreamRef.current);
         track.onunmute = () => {
           applyRemoteStream();
+          if (track.kind === 'video') attachCallVideo();
         };
         applyRemoteStream();
+        if (track.kind === 'video') attachCallVideo();
         setIsConnected(true);
         setIsWaiting(false);
         setShowRemoteBuffer(false);
@@ -1223,6 +1252,7 @@ function AudioChat() {
           const text = new TextDecoder().decode(data);
           let obj = null;
           try { obj = JSON.parse(text); } catch (_) {}
+          if (handleCallModeMessage(obj)) return;
           if (obj && obj.type === 'chess-move') {
             setChessState((prev) => {
               const next = applyChessMove(prev, { from: obj.from, to: obj.to, promotion: obj.promotion });
@@ -1336,6 +1366,7 @@ function AudioChat() {
       localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
     cleanupPeer();
+    resetCallMode();
     triggerRemoteBuffer(true);
     setTimeout(() => {
       socketService.send({ type: 'join', mode: 'audio' });
@@ -1572,6 +1603,7 @@ function AudioChat() {
     
     cleanupPeer();
     cleanupStreams();
+    resetCallMode();
     socketService.disconnect();
     partnerIdRef.current = null;
   };
@@ -1612,8 +1644,9 @@ function AudioChat() {
 
   const skipPartner = async () => {
     if (!isStarted) return;
-    
+
     cleanupPeer();
+    resetCallMode();
     setIsConnected(false);
     setIsWaiting(true);
     setWaitingMessage('');
@@ -1758,6 +1791,10 @@ function AudioChat() {
       return () => audioElement.removeEventListener('loadedmetadata', handler);
     }
   }, [isConnected]);
+
+  useEffect(() => {
+    if (callMode === 'video') attachCallVideo();
+  }, [callMode, isConnected]);
 
   // Waiting message timeout
   useEffect(() => {
