@@ -267,7 +267,8 @@ export function useCallModeSwitch({ peerRef, localStreamRef, initialMode, onLoca
     if (initialMode === 'voice' && local.getVideoTracks().length) {
       removeVideoTracks(local);
       onLocalVideoChange?.();
-    } else if (initialMode === 'video' && !hasVideo) {
+    } else if (initialMode === 'video' && !hasVideo && !mediaRestoreRef.current) {
+      // Guarded: skip resets twice (skip handler + the peer's close event)
       removeVideoTracks(local);
       mediaRestoreRef.current = navigator.mediaDevices.getUserMedia({ video: true })
         .then((camStream) => {
