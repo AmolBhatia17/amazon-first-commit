@@ -2192,9 +2192,33 @@ function VideoChat() {
   const isMobileFullscreen = !isFunMode;
 
   const isVoiceOnly = callMode === 'voice';
+  const modeSwitchDisabled = !isConnected || awaitingVideoAnswer;
+  const onModeSwitch = isVoiceOnly ? requestVideo : switchToVoice;
+  const modeSwitchTitle = isVoiceOnly ? 'Ask stranger to switch back to video' : 'Switch to voice only (camera off)';
+  const modeSwitchLabel = awaitingVideoAnswer ? 'Asking…' : isVoiceOnly ? 'Video' : 'Voice only';
 
   return (
     <VideoChatContainer>
+      {incomingVideoRequest && (
+        <FunRequestOverlay>
+          <FunRequestCard>
+            <FunRequestText>
+              Stranger wants to switch to <strong>video</strong>. Turn your camera on?
+            </FunRequestText>
+            <FunRequestActions>
+              <StopButton
+                onClick={declineVideoRequest}
+                style={{ background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', border: 'none' }}
+              >
+                Stay on voice
+              </StopButton>
+              <StartChatButton onClick={acceptVideoRequest}>
+                Turn on camera
+              </StartChatButton>
+            </FunRequestActions>
+          </FunRequestCard>
+        </FunRequestOverlay>
+      )}
       {pendingFunRequest && (
         <FunRequestOverlay>
           <FunRequestCard>
@@ -2351,6 +2375,14 @@ function VideoChat() {
                       )}
                     </FunMenuWrap>
                     <MobileControlButton
+                      onClick={onModeSwitch}
+                      title={modeSwitchTitle}
+                      disabled={modeSwitchDisabled}
+                      style={{ opacity: modeSwitchDisabled ? 0.5 : 1 }}
+                    >
+                      {isVoiceOnly ? <FiVideo /> : <FiPhone />}
+                    </MobileControlButton>
+                    <MobileControlButton
                       onClick={skipPartner}
                       className="skip"
                       title="Skip to next stranger"
@@ -2485,6 +2517,14 @@ function VideoChat() {
                             )}
                           </FunMenuWrap>
                           <ChatControlsRight>
+                            <ControlButton
+                              onClick={onModeSwitch}
+                              title={modeSwitchTitle}
+                              disabled={modeSwitchDisabled}
+                            >
+                              <ButtonIcon>{isVoiceOnly ? <FiVideo /> : <FiPhone />}</ButtonIcon>
+                              {modeSwitchLabel}
+                            </ControlButton>
                             <StopButton
                               onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
                               title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
