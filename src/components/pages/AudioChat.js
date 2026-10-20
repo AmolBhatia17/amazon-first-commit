@@ -1544,7 +1544,7 @@ function AudioChat() {
       setIsWaiting(true);
       setWaitingMessage('Looking for a partner...');
       triggerRemoteBuffer(true);
-      socketService.send({ type: 'join', mode: 'audio' });
+      // The 'join' itself is sent by the socket-listener effect once isStarted is set
     } catch (err) {
       setError('Failed to start chat. Please try again.');
       console.error('Error starting chat:', err);
@@ -1892,6 +1892,10 @@ function AudioChat() {
     socketService.on('session-ready', handleSessionReady);
     socketService.on('search-cancelled', handleSearchCancelled);
     socketService.on('error', handleError);
+
+    // Join only after the handlers exist: socketService drops messages nobody listens for,
+    // so a fast 'matched' reply used to be lost and leave this side stuck connecting
+    socketService.send({ type: 'join', mode: 'audio' });
 
     return () => {
       socketService.off('matched', handleMatch);
