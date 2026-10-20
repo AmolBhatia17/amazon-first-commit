@@ -7,7 +7,11 @@ import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
+import {
+  DEFAULT_RULE, isFootballOptionKey, parseFootballGameKey, footballLabelFromKey,
+} from '../../utils/footballPhysics';
 import ChessBoard from '../ui/ChessBoard';
+import FootballGame from '../ui/FootballGame';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -1106,6 +1110,9 @@ function VideoChat() {
   const [funToken, setFunToken] = useState(0);
   const [pendingFunRequest, setPendingFunRequest] = useState(null);
   const [acceptedFunGame, setAcceptedFunGame] = useState(null);
+  const [amMatchInitiator, setAmMatchInitiator] = useState(false);
+  const [footballCfg, setFootballCfg] = useState(null);
+  const [showFootballOptions, setShowFootballOptions] = useState(false);
   const [amIWhite, setAmIWhite] = useState(true);
   const [chessState, setChessState] = useState(createInitialState);
   const [isMusicHost, setIsMusicHost] = useState(false);
@@ -1121,6 +1128,7 @@ function VideoChat() {
   const [musicPosition, setMusicPosition] = useState(0);
   const [musicDuration, setMusicDuration] = useState(0);
   const hasRemoteStreamRef = useRef(false);
+  const footballRef = useRef(null);
   const funMenuRef = useRef(null);
   const funMenuMobileRef = useRef(null);
   
@@ -1315,6 +1323,10 @@ function VideoChat() {
             handleIncomingMusicControl(obj);
             return;
           }
+          if (obj && typeof obj.type === 'string' && obj.type.indexOf('football-') === 0) {
+            footballRef.current?.onPeerMessage(obj);
+            return;
+          }
           const message = {
             id: Date.now(),
             text,
@@ -1457,6 +1469,7 @@ function VideoChat() {
     setFunToken(0);
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
+    setFootballCfg(null);
     setChessState(createInitialState());
     setAudioEnabled(true);
     setError(''); // Clear any connection errors
@@ -1483,6 +1496,17 @@ function VideoChat() {
       }));
     } catch (e) {
       console.error('Music control send error', e);
+    }
+  };
+
+  // Relay for the Football game (FootballGame owns all game logic; the page is a pipe)
+  const sendFootballMsg = (obj) => {
+    const peer = peerConnectionRef.current;
+    if (!peer || typeof peer.send !== 'function') return;
+    try {
+      peer.send(JSON.stringify(obj));
+    } catch (e) {
+      console.error('Football send error', e);
     }
   };
 
@@ -1688,6 +1712,7 @@ function VideoChat() {
     setFunToken(0);
     setPendingFunRequest(null);
     setAcceptedFunGame(null);
+    setFootballCfg(null);
     setChessState(createInitialState());
     setError('');
     setMessages([]);
@@ -1727,6 +1752,8 @@ function VideoChat() {
     socketService.send({ type: 'fun-exit' });
     setFunToken(0);
     setAcceptedFunGame(null);
+    setFootballCfg(null);
+    setShowFootballOptions(false);
     setChessState(createInitialState());
     setShowFunMenu(false);
     setShowPlayAlongSubmenu(false);
@@ -1744,6 +1771,7 @@ function VideoChat() {
     setReplyingTo(null);
     setFunToken(0);
     setAcceptedFunGame(null);
+    setFootballCfg(null);
     setChessState(createInitialState());
     setError(''); // Clear errors immediately
     triggerRemoteBuffer(true); // Keep visible while waiting in queue
@@ -1960,6 +1988,7 @@ function VideoChat() {
       partnerIdRef.current = data.partnerId;
       setWaitingMessage('Found partner! Connecting...');
       triggerRemoteBuffer(false);
+      setAmMatchInitiator(!!data.initiator);
       connectionStartTimeRef.current = Date.now();
       establishmentRecordedRef.current = false;
 
@@ -2029,10 +2058,19 @@ function VideoChat() {
       setShowFunMenu(false);
       setShowPlayAlongSubmenu(false);
     };
+    // fun-request relays only the game string, so the football rule rides inside it
+    // ("football:goals-3" / "football:time-2"). Parse to {'football', rule} or pass through.
+    const resolveFunGame = (game) => {
+      const fb = parseFootballGameKey(game);
+      if (fb) return { accepted: 'football', cfg: fb.cfg };
+      return { accepted: game, cfg: null };
+    };
     const handleFunAccept = (msg) => {
       const game = msg?.game || 'chess';
+      const resolved = resolveFunGame(game);
       setFunToken(1);
-      setAcceptedFunGame(game);
+      setAcceptedFunGame(resolved.accepted);
+      setFootballCfg(resolved.cfg);
       if (game === 'chess') {
         setAmIWhite(true);
         setChessState(createInitialState());
@@ -2047,6 +2085,7 @@ function VideoChat() {
     const handleFunExit = () => {
       setFunToken(0);
       setAcceptedFunGame(null);
+      setFootballCfg(null);
       setChessState(createInitialState());
       setIsMusicHost(false);
       setShowFunMenu(false);
@@ -2085,7 +2124,12 @@ function VideoChat() {
     };
   }, [isStarted]);
 
-  const funGameLabel = { chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[pendingFunRequest?.game] || pendingFunRequest?.game || '';
+  const funGameLabel = (() => {
+    const key = pendingFunRequest?.game || '';
+    const footballLabel = footballLabelFromKey(key);
+    if (footballLabel) return footballLabel;
+    return ({ chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[key] || key || '');
+  })();
 
   const isFunMode = funToken === 1 || !!acceptedFunGame;
   // On mobile, use the full-screen video layout by default (WhatsApp-style) whenever not in FUN mode.
@@ -2111,14 +2155,17 @@ function VideoChat() {
               </StopButton>
               <StartChatButton
                 onClick={() => {
-                  socketService.send({ type: 'fun-accept', game: pendingFunRequest.game });
+                  const game = pendingFunRequest.game;
+                  const fb = parseFootballGameKey(game);
+                  socketService.send({ type: 'fun-accept', game });
                   setFunToken(1);
-                  setAcceptedFunGame(pendingFunRequest.game);
-                  if (pendingFunRequest.game === 'chess') {
+                  setAcceptedFunGame(fb ? 'football' : game);
+                  setFootballCfg(fb ? fb.cfg : null);
+                  if (game === 'chess') {
                     setAmIWhite(false);
                     setChessState(createInitialState());
                   }
-                  if (pendingFunRequest.game === 'listen-along') {
+                  if (game === 'listen-along') {
                     // We accepted partner's request; they are host, we are follower
                     setIsMusicHost(false);
                   }
@@ -2215,6 +2262,19 @@ function VideoChat() {
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
                                   Chess
                                 </FunMenuItem>
+                                <FunMenuItem onClick={() => setShowFootballOptions((v) => !v)}>
+                                  Football
+                                </FunMenuItem>
+                                {showFootballOptions && (
+                                  <FunSubmenu>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-1' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 1 goal</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 3 goals</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 5 goals</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-2' }); setShowFunMenu(false); setShowFootballOptions(false); }}>2 minutes</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>3 minutes</FunMenuItem>
+                                    <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>5 minutes</FunMenuItem>
+                                  </FunSubmenu>
+                                )}
                                 <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
                                   Truth and Dare
                                 </FunMenuItem>
@@ -2331,6 +2391,19 @@ function VideoChat() {
                                   <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'chess' }); setShowFunMenu(false); }}>
                                     Chess
                                   </FunMenuItem>
+                                  <FunMenuItem onClick={() => setShowFootballOptions((v) => !v)}>
+                                    Football
+                                  </FunMenuItem>
+                                  {showFootballOptions && (
+                                    <FunSubmenu>
+                                      <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-1' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 1 goal</FunMenuItem>
+                                      <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 3 goals</FunMenuItem>
+                                      <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:goals-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>First to 5 goals</FunMenuItem>
+                                      <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-2' }); setShowFunMenu(false); setShowFootballOptions(false); }}>2 minutes</FunMenuItem>
+                                      <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-3' }); setShowFunMenu(false); setShowFootballOptions(false); }}>3 minutes</FunMenuItem>
+                                      <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'football:time-5' }); setShowFunMenu(false); setShowFootballOptions(false); }}>5 minutes</FunMenuItem>
+                                    </FunSubmenu>
+                                  )}
                                   <FunMenuItem onClick={() => { socketService.send({ type: 'fun-request', game: 'truth-and-dare' }); setShowFunMenu(false); }}>
                                     Truth and Dare
                                   </FunMenuItem>
@@ -2379,7 +2452,7 @@ function VideoChat() {
               </StatusMessage>
             </ChatHeader>
             {error && !error.includes('already in session') && !error.includes('Already searching') && <ErrorMessage>{error}</ErrorMessage>}
-            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along') && (
+            {(acceptedFunGame === 'chess' || acceptedFunGame === 'listen-along' || acceptedFunGame === 'football') && (
               <ChessArea>
                 {acceptedFunGame === 'chess' && (
                   <ChessBoard
@@ -2387,6 +2460,15 @@ function VideoChat() {
                     amIWhite={amIWhite}
                     onMove={handleChessMove}
                     disabled={!!chessState.gameOver || (chessState.turn === 'white' && !amIWhite) || (chessState.turn === 'black' && amIWhite)}
+                  />
+                )}
+                {acceptedFunGame === 'football' && (
+                  <FootballGame
+                    ref={footballRef}
+                    amHost={amMatchInitiator}
+                    cfg={footballCfg}
+                    sendViaPeer={sendFootballMsg}
+                    onExit={exitFun}
                   />
                 )}
                 {acceptedFunGame === 'listen-along' && (
@@ -2563,7 +2645,7 @@ function VideoChat() {
               </ChessArea>
             )}
                    {funToken !== 1 && (
-                   <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess'}>
+                   <ChatBox $keyboardHeight={keyboardHeight} $mobileChatTop={mobileChatTop} $chessMode={acceptedFunGame === 'chess' || acceptedFunGame === 'football'}>
                      <ChatMessages>
                        {messages.map((message) => (
                          <Message 
