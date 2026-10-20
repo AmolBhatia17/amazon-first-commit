@@ -5,6 +5,7 @@ import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiSkipBack, FiUsers, FiSend, F
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { useCallModeSwitch } from '../../utils/useCallModeSwitch';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import {
@@ -1146,6 +1147,35 @@ function VideoChat() {
   const connectionStartTimeRef = useRef(null);
   const establishmentRecordedRef = useRef(false);
 
+  // Re-point the self view after the camera track is swapped
+  const refreshLocalVideo = () => {
+    const video = localVideoRef.current;
+    const stream = localStreamRef.current;
+    if (!video || !stream) return;
+    video.srcObject = null;
+    video.srcObject = stream;
+    video.play?.().catch(() => {});
+  };
+
+  const {
+    callMode,
+    incomingVideoRequest,
+    awaitingVideoAnswer,
+    switchNotice,
+    switchToVoice,
+    requestVideo,
+    acceptVideoRequest,
+    declineVideoRequest,
+    handleCallModeMessage,
+    resetCallMode,
+    waitForCallMedia,
+  } = useCallModeSwitch({
+    peerRef: peerConnectionRef,
+    localStreamRef,
+    initialMode: 'video',
+    onLocalVideoChange: refreshLocalVideo,
+  });
+
   const recordEstablishmentTime = () => {
     if (establishmentRecordedRef.current) return;
     establishmentRecordedRef.current = true;
@@ -1312,6 +1342,7 @@ function VideoChat() {
           const text = new TextDecoder().decode(data);
           let obj = null;
           try { obj = JSON.parse(text); } catch (_) {}
+          if (handleCallModeMessage(obj)) return;
           if (obj && obj.type === 'chess-move') {
             setChessState((prev) => {
               const next = applyChessMove(prev, { from: obj.from, to: obj.to, promotion: obj.promotion });
@@ -1477,6 +1508,7 @@ function VideoChat() {
       localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
     cleanupPeer();
+    resetCallMode();
     triggerRemoteBuffer(true); // Keep visible while waiting in queue
     // Small delay to ensure cleanup is complete before rejoining at END of queue (FIFO)
     setTimeout(() => {
@@ -1720,6 +1752,7 @@ function VideoChat() {
     
     cleanupPeer();
     cleanupStreams();
+    resetCallMode();
     socketService.disconnect();
     partnerIdRef.current = null;
   };
@@ -1761,9 +1794,10 @@ function VideoChat() {
 
   const skipPartner = async () => {
     if (!isStarted) return;
-    
+
     cleanupPeer();
-    
+    resetCallMode();
+
     setIsConnected(false);
     setIsWaiting(true);
     setWaitingMessage('');
@@ -2002,6 +2036,8 @@ function VideoChat() {
       socketService.send({ type: 'acknowledge' });
       console.log('[ws] acknowledged match with', data.partnerId);
 
+      // Camera may still be coming back if the last call ended in voice-only mode
+      await waitForCallMedia();
       await setupWebRTC(data.initiator);
     };
 
