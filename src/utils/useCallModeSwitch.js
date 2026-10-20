@@ -11,17 +11,34 @@ import { useState, useRef } from 'react';
  *
  * Going to voice is immediate for both sides. Going to video needs the partner's consent;
  * if both sides ask at the same time, the switch just happens.
+ *
+ * Only the initiator ever creates the video transceiver. If the non-initiator added its
+ * track first, simple-peer would ask the initiator for a second, empty transceiver and the
+ * call could end up showing that dead one - so the non-initiator waits for the initiator's
+ * video m-line and reuses it (pc.addTrack picks up an unused transceiver of the same kind).
  */
 
 const REQUEST_TIMEOUT_MS = 30000;
 const NOTICE_MS = 3500;
+const TRANSCEIVER_WAIT_MS = 10000;
 
 const findVideoTransceiver = (peer) => {
   const pc = peer?._pc;
   if (!pc || typeof pc.getTransceivers !== 'function') return null;
-  return pc.getTransceivers().find(
+  const video = pc.getTransceivers().filter(
     (t) => t.direction !== 'stopped' && t.receiver?.track?.kind === 'video'
-  ) || null;
+  );
+  return video.find((t) => t.direction.includes('send')) || video[0] || null;
+};
+
+const waitForVideoTransceiver = async (peer) => {
+  const deadline = Date.now() + TRANSCEIVER_WAIT_MS;
+  while (Date.now() < deadline && !peer.destroyed) {
+    const transceiver = findVideoTransceiver(peer);
+    if (transceiver) return transceiver;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return null;
 };
 
 const removeVideoTracks = (stream) => {
@@ -104,30 +121,44 @@ export function useCallModeSwitch({ peerRef, localStreamRef, initialMode, onLoca
     onLocalVideoChange?.();
   };
 
-  const startLocalVideo = async () => {
-    const local = localStreamRef.current;
+  // Step 1: open the camera (permission prompt). Returns the track, or null on failure.
+  const acquireCamera = async () => {
     const peer = peerRef.current;
-    if (!local || !peer) return false;
-
-    let track;
+    if (!localStreamRef.current || !peer) return null;
     try {
       const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      track = camStream.getVideoTracks()[0];
+      const track = camStream.getVideoTracks()[0];
+      // The call ended or moved to a new partner while the permission prompt was open
+      if (peerRef.current !== peer) {
+        track.stop();
+        return null;
+      }
+      return track;
     } catch (err) {
       console.error('Camera access failed', err);
       showNotice('Camera blocked. Allow camera access to switch to video.');
-      return false;
+      return null;
     }
-    // The call ended or moved to a new partner while the permission prompt was open
-    if (peerRef.current !== peer) {
+  };
+
+  // Step 2: start sending the track on the existing peer connection
+  const attachCamera = async (track) => {
+    const local = localStreamRef.current;
+    const peer = peerRef.current;
+    if (!local || !peer) {
       track.stop();
       return false;
     }
-
     removeVideoTracks(local);
     local.addTrack(track);
+    onLocalVideoChange?.();
     try {
-      const transceiver = findVideoTransceiver(peer);
+      let transceiver = findVideoTransceiver(peer);
+      if (!transceiver && !peer.initiator) {
+        transceiver = await waitForVideoTransceiver(peer);
+        // Partner left, or flipped back to voice (which stopped this track) while we waited
+        if (peerRef.current !== peer || track.readyState === 'ended') return false;
+      }
       if (transceiver && transceiver.direction.includes('send')) {
         await transceiver.sender.replaceTrack(track);
       } else {
@@ -135,12 +166,9 @@ export function useCallModeSwitch({ peerRef, localStreamRef, initialMode, onLoca
       }
     } catch (err) {
       console.error('Video track start error', err);
-      local.removeTrack(track);
-      track.stop();
       showNotice('Could not start video.');
       return false;
     }
-    onLocalVideoChange?.();
     return true;
   };
 
@@ -159,13 +187,16 @@ export function useCallModeSwitch({ peerRef, localStreamRef, initialMode, onLoca
   const acceptVideoRequest = async () => {
     setIncomingVideoRequest(false);
     setAwaiting(false);
-    const ok = await startLocalVideo();
-    if (!ok) {
+    const track = await acquireCamera();
+    if (!track) {
       sendControl('decline-video');
       return;
     }
+    // Accept before attaching: a non-initiator waits for the initiator's video m-line,
+    // which only appears once the initiator hears this accept
     sendControl('accept-video');
     setCallMode('video');
+    attachCamera(track);
   };
 
   const declineVideoRequest = () => {
@@ -189,9 +220,13 @@ export function useCallModeSwitch({ peerRef, localStreamRef, initialMode, onLoca
       case 'accept-video':
         if (!awaitingRef.current) break;
         setAwaiting(false);
-        startLocalVideo().then((ok) => {
-          if (ok) setCallMode('video');
-          else sendControl('to-voice');
+        acquireCamera().then((track) => {
+          if (!track) {
+            sendControl('to-voice');
+            return;
+          }
+          setCallMode('video');
+          attachCamera(track);
         });
         break;
       case 'decline-video':
