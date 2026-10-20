@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiSkipBack, FiZap, FiVideo, FiPlay } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiSkipBack, FiZap, FiVideo, FiPlay, FiPhone } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
@@ -195,6 +195,58 @@ const RemoteBufferOverlay = styled.div`
   align-items: center;
   justify-content: center;
   background: rgba(28, 28, 30, 0.72);
+`;
+
+/* Live video upgrade: the stranger fills the stage, your camera sits top-left
+   (the mic tile already owns the opposite corner). Both are muted - sound
+   keeps playing through the hidden <audio>. */
+const StageVideo = styled.video`
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  transform: scaleX(-1);
+`;
+
+const SelfVideo = styled.video`
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 6;
+  width: 168px;
+  height: 118px;
+  object-fit: cover;
+  background: #000;
+  border: 2px solid ${({ theme }) => theme.colors.paper};
+  border-radius: ${({ theme }) => theme.radii.panel};
+  transform: scaleX(-1);
+
+  @media (max-width: 900px) {
+    left: 10px;
+    top: 12px;
+    width: 86px;
+    height: 116px;
+    border-radius: 14px;
+  }
+`;
+
+const CallModeNotice = styled.div`
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const AudioOverlayButton = styled.button`
@@ -1957,8 +2009,34 @@ function AudioChat() {
     return ({ chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[key] || key || '');
   })();
 
+  const isVideoCall = callMode === 'video';
+  const modeSwitchDisabled = !isConnected || awaitingVideoAnswer;
+  const onModeSwitch = isVideoCall ? switchToVoice : requestVideo;
+  const modeSwitchTitle = isVideoCall ? 'Switch back to voice only (camera off)' : 'Ask stranger to switch to video';
+  const modeSwitchLabel = awaitingVideoAnswer ? 'Asking…' : isVideoCall ? 'Voice only' : 'Video';
+
   return (
     <AudioChatContainer>
+      {incomingVideoRequest && (
+        <FunRequestOverlay>
+          <FunRequestCard>
+            <FunRequestText>
+              Stranger wants to switch to <strong>video</strong>. Turn your camera on?
+            </FunRequestText>
+            <FunRequestActions>
+              <StopButton
+                onClick={declineVideoRequest}
+                style={{ background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', border: 'none' }}
+              >
+                Stay on voice
+              </StopButton>
+              <StartChatButton onClick={acceptVideoRequest}>
+                Turn on camera
+              </StartChatButton>
+            </FunRequestActions>
+          </FunRequestCard>
+        </FunRequestOverlay>
+      )}
       {pendingFunRequest && (
         <FunRequestOverlay>
           <FunRequestCard>
@@ -2007,6 +2085,14 @@ function AudioChat() {
             {/* Hidden Audio Element for playing remote sound */}
             <HiddenAudioElement ref={remoteAudioRef} autoPlay />
 
+            {isConnected && isVideoCall && (
+              <>
+                <StageVideo ref={remoteVideoRef} autoPlay playsInline muted />
+                <SelfVideo ref={localVideoRef} autoPlay playsInline muted />
+              </>
+            )}
+            {switchNotice && <CallModeNotice>{switchNotice}</CallModeNotice>}
+
             {/* Remote Audio Visualizer */}
             <AudioFeed>
               {isConnected && remoteStreamForVisualizer ? (
@@ -2048,6 +2134,16 @@ function AudioChat() {
               </AudioOverlayButton>
             </AudioFeed>
               <MobileAudioControls>
+                {isStarted && (
+                  <MobileControlButton
+                    onClick={onModeSwitch}
+                    title={modeSwitchTitle}
+                    disabled={modeSwitchDisabled}
+                    style={{ opacity: modeSwitchDisabled ? 0.5 : 1 }}
+                  >
+                    {isVideoCall ? <FiPhone /> : <FiVideo />}
+                  </MobileControlButton>
+                )}
                 <MobileControlButton
                   onClick={skipPartner}
                   className="skip"
@@ -2138,6 +2234,14 @@ function AudioChat() {
                       )}
                     </FunMenuWrap>
                     <ChatControlsRight>
+                      <ControlButton
+                        onClick={onModeSwitch}
+                        title={modeSwitchTitle}
+                        disabled={modeSwitchDisabled}
+                      >
+                        <ButtonIcon>{isVideoCall ? <FiPhone /> : <FiVideo />}</ButtonIcon>
+                        {modeSwitchLabel}
+                      </ControlButton>
                       <StopButton
                         onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
                         title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
