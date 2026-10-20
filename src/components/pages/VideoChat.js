@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiSkipBack, FiUsers, FiSend, FiSmile, FiMessageCircle, FiSquare, FiZap, FiHeadphones, FiPlay } from 'react-icons/fi';
+import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiSkipBack, FiUsers, FiSend, FiSmile, FiMessageCircle, FiSquare, FiZap, FiHeadphones, FiPlay, FiPhone } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
@@ -179,6 +179,22 @@ const RemoteBufferOverlay = styled.div`
   align-items: center;
   justify-content: center;
   background: rgba(28, 28, 30, 0.72);
+`;
+
+const CallModeNotice = styled.div`
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 `;
 
 const VideoOverlayButton = styled.button`
@@ -2175,6 +2191,8 @@ function VideoChat() {
   // On mobile, use the full-screen video layout by default (WhatsApp-style) whenever not in FUN mode.
   const isMobileFullscreen = !isFunMode;
 
+  const isVoiceOnly = callMode === 'voice';
+
   return (
     <VideoChatContainer>
       {pendingFunRequest && (
@@ -2239,12 +2257,20 @@ function VideoChat() {
                   <div>Stranger</div>
                 </VideoPlaceholder>
               )}
+              {/* Voice-only: the <video> stays mounted underneath because it plays the stranger's audio */}
+              {isConnected && isVoiceOnly && (
+                <VideoPlaceholder style={{ position: 'absolute', inset: 0 }}>
+                  <FiPhone />
+                  <div>Voice only</div>
+                </VideoPlaceholder>
+              )}
               {showRemoteBuffer && (
                 <RemoteBufferOverlay>
                   <BufferSpinner />
                 </RemoteBufferOverlay>
               )}
               <VideoLabel>Stranger</VideoLabel>
+              {switchNotice && <CallModeNotice>{switchNotice}</CallModeNotice>}
               <MobileVideoControls $hasSession={isStarted && !isFunMode}>
                 {!isStarted ? (
                   <MobileControlButton
@@ -2355,6 +2381,11 @@ function VideoChat() {
                         <VideoPlaceholder>
                           <FiVideo />
                           <div>Your Camera</div>
+                        </VideoPlaceholder>
+                      )}
+                      {hasLocalStream && isVoiceOnly && (
+                        <VideoPlaceholder style={{ position: 'absolute', inset: 0 }} title="Camera off">
+                          <FiMic />
                         </VideoPlaceholder>
                       )}
                       <VideoOverlayButton
