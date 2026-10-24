@@ -70,6 +70,15 @@ export class StateManager {
     }
   }
 
+  /**
+   * Users whose connection has not answered a heartbeat for longer than maxSilenceMs.
+   * These are ghosts: the socket never closed cleanly (phone lost signal, laptop slept).
+   */
+  getUnresponsiveUsers(maxSilenceMs: number): UserRecord[] {
+    const cutoff = Date.now() - maxSilenceMs;
+    return Array.from(this.users.values()).filter(user => user.lastPong < cutoff);
+  }
+
   setMode(userId: string, mode: 'video' | 'audio' | 'text'): void {
     const user = this.users.get(userId);
     if (user) {

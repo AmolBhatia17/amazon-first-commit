@@ -1,0 +1,350 @@
+import { useState, useRef } from 'react';
+
+/*
+ * Live voice <-> video switching inside an existing call.
+ *
+ * Control messages ride the WebRTC data channel as { type: 'call-mode', action }.
+ * Media changes reuse the same peer connection, so the call never drops:
+ *  - video off: stop the camera and swap the outgoing video track for null (no renegotiation)
+ *  - video on:  reuse the video sender if one exists, otherwise add a track and let
+ *               simple-peer renegotiate (the server relays any signal type)
+ *
+ * Going to voice is immediate for both sides. Going to video needs the partner's consent;
+ * if both sides ask at the same time, the switch just happens.
+ *
+ * Only the initiator ever creates the video transceiver. If the non-initiator added its
+ * track first, simple-peer would ask the initiator for a second, empty transceiver and the
+ * call could end up showing that dead one - so the non-initiator waits for the initiator's
+ * video m-line and reuses it (pc.addTrack picks up an unused transceiver of the same kind).
+ */
+
+const REQUEST_TIMEOUT_MS = 30000;
+const NOTICE_MS = 5000;
+const TRANSCEIVER_WAIT_MS = 10000;
+// A camera held by another app/browser can make getUserMedia hang (Edge: ~12s) before failing
+const CAMERA_START_TIMEOUT_MS = 8000;
+
+// What to tell the user when their own camera would not start
+export const cameraErrorMessage = (err) => {
+  const name = err?.name;
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Camera blocked. Allow camera access to switch to video.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No camera found on this device.';
+  }
+  // NotReadableError / AbortError / timeout: the device exists but someone else has it
+  return 'Your camera is in use by another app or browser. Close it and try again.';
+};
+
+const openCamera = () => new Promise((resolve, reject) => {
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    const err = new Error('Camera did not start in time');
+    err.name = 'TimeoutError';
+    reject(err);
+  }, CAMERA_START_TIMEOUT_MS);
+  navigator.mediaDevices.getUserMedia({ video: true }).then(
+    (stream) => {
+      clearTimeout(timer);
+      // Too late: we already gave up, so release the camera again
+      if (timedOut) stream.getTracks().forEach((t) => t.stop());
+      else resolve(stream);
+    },
+    (err) => {
+      clearTimeout(timer);
+      if (!timedOut) reject(err);
+    }
+  );
+});
+
+const findVideoTransceiver = (peer) => {
+  const pc = peer?._pc;
+  if (!pc || typeof pc.getTransceivers !== 'function') return null;
+  const video = pc.getTransceivers().filter(
+    (t) => t.direction !== 'stopped' && t.receiver?.track?.kind === 'video'
+  );
+  return video.find((t) => t.direction.includes('send')) || video[0] || null;
+};
+
+const waitForVideoTransceiver = async (peer) => {
+  const deadline = Date.now() + TRANSCEIVER_WAIT_MS;
+  while (Date.now() < deadline && !peer.destroyed) {
+    const transceiver = findVideoTransceiver(peer);
+    if (transceiver) return transceiver;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return null;
+};
+
+const removeVideoTracks = (stream) => {
+  if (!stream) return;
+  stream.getVideoTracks().forEach((t) => {
+    t.stop();
+    stream.removeTrack(t);
+  });
+};
+
+// Point a <video> at a single track (or clear it). Using a fresh video-only stream makes the
+// element pick up tracks that arrive mid-call and keeps it from double-playing audio.
+export const showVideoTrack = (el, track) => {
+  if (!el) return;
+  if (!track) {
+    if (el.srcObject) el.srcObject = null;
+    return;
+  }
+  const current = el.srcObject?.getVideoTracks?.()[0];
+  if (current === track) return;
+  el.srcObject = new MediaStream([track]);
+  el.play?.().catch(() => {});
+};
+
+export function useCallModeSwitch({ peerRef, localStreamRef, initialMode, onLocalVideoChange }) {
+  const [callMode, setCallModeState] = useState(initialMode);
+  const [incomingVideoRequest, setIncomingVideoRequest] = useState(false);
+  const [awaitingVideoAnswer, setAwaitingVideoAnswer] = useState(false);
+  const [switchNotice, setSwitchNotice] = useState('');
+  const callModeRef = useRef(initialMode);
+  const awaitingRef = useRef(false);
+  const requestTimerRef = useRef(null);
+  const noticeTimerRef = useRef(null);
+  const mediaRestoreRef = useRef(null);
+
+  const setCallMode = (mode) => {
+    callModeRef.current = mode;
+    setCallModeState(mode);
+  };
+
+  const showNotice = (text) => {
+    setSwitchNotice(text);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setSwitchNotice(''), NOTICE_MS);
+  };
+
+  const setAwaiting = (value) => {
+    awaitingRef.current = value;
+    setAwaitingVideoAnswer(value);
+    if (requestTimerRef.current) {
+      clearTimeout(requestTimerRef.current);
+      requestTimerRef.current = null;
+    }
+    if (value) {
+      requestTimerRef.current = setTimeout(() => {
+        setAwaiting(false);
+        showNotice('No answer from stranger.');
+      }, REQUEST_TIMEOUT_MS);
+    }
+  };
+
+  const sendControl = (action) => {
+    const peer = peerRef.current;
+    if (!peer || typeof peer.send !== 'function') return false;
+    try {
+      peer.send(JSON.stringify({ type: 'call-mode', action }));
+      return true;
+    } catch (e) {
+      console.error('Call mode send error', e);
+      return false;
+    }
+  };
+
+  const stopLocalVideo = () => {
+    removeVideoTracks(localStreamRef.current);
+    const transceiver = findVideoTransceiver(peerRef.current);
+    if (transceiver?.sender?.track) {
+      transceiver.sender.replaceTrack(null).catch((err) => console.error('Video sender clear error', err));
+    }
+    onLocalVideoChange?.();
+  };
+
+  // Step 1: open the camera (permission prompt). Returns the track, or null on failure.
+  const acquireCamera = async () => {
+    const peer = peerRef.current;
+    if (!localStreamRef.current || !peer) return null;
+    try {
+      const camStream = await openCamera();
+      const track = camStream.getVideoTracks()[0];
+      // The call ended or moved to a new partner while the permission prompt was open
+      if (peerRef.current !== peer) {
+        track.stop();
+        return null;
+      }
+      return track;
+    } catch (err) {
+      console.error('Camera access failed', err);
+      showNotice(cameraErrorMessage(err));
+      return null;
+    }
+  };
+
+  // Step 2: start sending the track on the existing peer connection
+  const attachCamera = async (track) => {
+    const local = localStreamRef.current;
+    const peer = peerRef.current;
+    if (!local || !peer) {
+      track.stop();
+      return false;
+    }
+    removeVideoTracks(local);
+    local.addTrack(track);
+    onLocalVideoChange?.();
+    try {
+      let transceiver = findVideoTransceiver(peer);
+      if (!transceiver && !peer.initiator) {
+        transceiver = await waitForVideoTransceiver(peer);
+        // Partner left, or flipped back to voice (which stopped this track) while we waited
+        if (peerRef.current !== peer || track.readyState === 'ended') return false;
+      }
+      if (transceiver && transceiver.direction.includes('send')) {
+        await transceiver.sender.replaceTrack(track);
+      } else {
+        peer.addTrack(track, local);
+      }
+    } catch (err) {
+      console.error('Video track start error', err);
+      showNotice('Could not start video.');
+      return false;
+    }
+    return true;
+  };
+
+  const switchToVoice = () => {
+    if (callModeRef.current === 'voice') return;
+    sendControl('to-voice');
+    stopLocalVideo();
+    setCallMode('voice');
+  };
+
+  const requestVideo = () => {
+    if (callModeRef.current === 'video' || awaitingRef.current) return;
+    if (sendControl('request-video')) setAwaiting(true);
+  };
+
+  const acceptVideoRequest = async () => {
+    setIncomingVideoRequest(false);
+    setAwaiting(false);
+    const track = await acquireCamera();
+    if (!track) {
+      sendControl('camera-unavailable');
+      return;
+    }
+    // Accept before attaching: a non-initiator waits for the initiator's video m-line,
+    // which only appears once the initiator hears this accept
+    sendControl('accept-video');
+    setCallMode('video');
+    attachCamera(track);
+  };
+
+  const declineVideoRequest = () => {
+    setIncomingVideoRequest(false);
+    sendControl('decline-video');
+  };
+
+  // Returns true when the data-channel message was a call-mode message
+  const handleCallModeMessage = (msg) => {
+    if (!msg || msg.type !== 'call-mode') return false;
+    switch (msg.action) {
+      case 'request-video':
+        if (callModeRef.current === 'video') {
+          sendControl('accept-video');
+        } else if (awaitingRef.current) {
+          acceptVideoRequest();
+        } else {
+          setIncomingVideoRequest(true);
+        }
+        break;
+      case 'accept-video':
+        if (!awaitingRef.current) break;
+        setAwaiting(false);
+        acquireCamera().then((track) => {
+          if (!track) {
+            sendControl('camera-unavailable');
+            return;
+          }
+          setCallMode('video');
+          attachCamera(track);
+        });
+        break;
+      case 'decline-video':
+        setAwaiting(false);
+        showNotice('Stranger wants to stay on voice.');
+        break;
+      // The partner agreed (or asked) but their camera would not start: settle back on voice
+      case 'camera-unavailable':
+        setIncomingVideoRequest(false);
+        setAwaiting(false);
+        if (callModeRef.current !== 'voice') {
+          stopLocalVideo();
+          setCallMode('voice');
+        }
+        showNotice("Stranger's camera isn't available, so the call stays on voice.");
+        break;
+      case 'to-voice':
+        setIncomingVideoRequest(false);
+        setAwaiting(false);
+        if (callModeRef.current !== 'voice') {
+          stopLocalVideo();
+          setCallMode('voice');
+          showNotice('Stranger switched to voice only.');
+        }
+        break;
+      default:
+        break;
+    }
+    return true;
+  };
+
+  // Back to the page's own mode for the next partner: voice pages drop the camera,
+  // video pages get it back if it was switched off.
+  const resetCallMode = () => {
+    if (requestTimerRef.current) clearTimeout(requestTimerRef.current);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    requestTimerRef.current = null;
+    noticeTimerRef.current = null;
+    awaitingRef.current = false;
+    setAwaitingVideoAnswer(false);
+    setIncomingVideoRequest(false);
+    setSwitchNotice('');
+    setCallMode(initialMode);
+
+    const local = localStreamRef.current;
+    if (!local) return;
+    const hasVideo = local.getVideoTracks().some((t) => t.readyState === 'live');
+    if (initialMode === 'voice' && local.getVideoTracks().length) {
+      removeVideoTracks(local);
+      onLocalVideoChange?.();
+    } else if (initialMode === 'video' && !hasVideo && !mediaRestoreRef.current) {
+      // Guarded: skip resets twice (skip handler + the peer's close event)
+      removeVideoTracks(local);
+      mediaRestoreRef.current = navigator.mediaDevices.getUserMedia({ video: true })
+        .then((camStream) => {
+          if (localStreamRef.current === local) {
+            local.addTrack(camStream.getVideoTracks()[0]);
+            onLocalVideoChange?.();
+          } else {
+            camStream.getTracks().forEach((t) => t.stop());
+          }
+        })
+        .catch((err) => console.error('Camera restore failed', err))
+        .finally(() => { mediaRestoreRef.current = null; });
+    }
+  };
+
+  // Lets a new match wait for the camera that resetCallMode is bringing back
+  const waitForCallMedia = () => mediaRestoreRef.current || Promise.resolve();
+
+  return {
+    callMode,
+    incomingVideoRequest,
+    awaitingVideoAnswer,
+    switchNotice,
+    switchToVoice,
+    requestVideo,
+    acceptVideoRequest,
+    declineVideoRequest,
+    handleCallModeMessage,
+    resetCallMode,
+    waitForCallMedia,
+  };
+}

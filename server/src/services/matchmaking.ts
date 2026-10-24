@@ -1,10 +1,8 @@
 import { StateManager } from './stateManager';
-import { UserRecord } from '../types';
 import { logger } from '../utils/logger';
 
 export class MatchmakingService {
   private stateManager: StateManager;
-  private readonly QUEUE_TIMEOUT_MS = 30000;
 
   constructor(stateManager: StateManager) {
     this.stateManager = stateManager;
@@ -19,11 +17,9 @@ export class MatchmakingService {
    * Returns the created session ID or null if no match possible
    */
   findMatch(mode: 'video' | 'audio' | 'text'): string | null {
+    // No time limit on waiting: dead connections are removed by the heartbeat instead
     const searchingUsers = this.stateManager.getSearchingUsers(mode);
-    
-    // Prune stale entries
-    this.pruneStaleUsers(searchingUsers);
-    
+
     // Need at least 2 users to match
     if (searchingUsers.length < 2) {
       // Only log if not empty (to reduce noise)
@@ -110,32 +106,10 @@ export class MatchmakingService {
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Remove users who have been waiting too long
-   */
-  private pruneStaleUsers(searchingUsers: UserRecord[]): void {
-    const cutoff = Date.now() - this.QUEUE_TIMEOUT_MS;
-    
-    for (const user of searchingUsers) {
-      if ((user.enqueuedAt || 0) < cutoff) {
-        this.stateManager.dequeueUser(user.userId);
-        logger.info(`⏰ Pruned stale user: ${user.userId}`);
-      }
-    }
-  }
-
-  /**
-   * Periodic cleanup task
+   * Periodic cleanup task. Queue entries are not timed out: a user may wait as long as
+   * they like, and dead connections are dropped by the heartbeat in index.ts.
    */
   performMaintenance(): void {
-    // Check all queues
-    const videoUsers = this.stateManager.getSearchingUsers('video');
-    const audioUsers = this.stateManager.getSearchingUsers('audio');
-    const textUsers = this.stateManager.getSearchingUsers('text');
-    
-    this.pruneStaleUsers(videoUsers);
-    this.pruneStaleUsers(audioUsers);
-    this.pruneStaleUsers(textUsers);
-    
     // Validate system state
     const validation = this.stateManager.validateState();
     if (!validation.valid) {

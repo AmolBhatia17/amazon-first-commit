@@ -7,6 +7,7 @@ import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
+import { watchPeerConnection } from '../../utils/connectionWatchdog';
 
 // Minimal process polyfill for simple-peer in browser builds
 if (typeof window !== 'undefined') {
@@ -629,18 +630,10 @@ function TextChat() {
       
       const pc = peer._pc;
       if (pc) {
-        pc.oniceconnectionstatechange = () => {
-          const state = pc.iceConnectionState;
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            resetForRequeue('Connection lost. Rejoining queue...');
-          }
-        };
-        pc.onconnectionstatechange = () => {
-          const state = pc.connectionState;
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            resetForRequeue('Connection lost. Rejoining queue...');
-          }
-        };
+        // A brief 'disconnected' recovers by itself; only requeue if it lasts
+        watchPeerConnection(pc, () => {
+          if (peerConnectionRef.current === peer) resetForRequeue('Connection lost. Rejoining queue...');
+        });
       }
     } catch (error) {
       console.error('Error setting up WebRTC:', error);

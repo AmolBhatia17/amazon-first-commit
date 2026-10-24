@@ -57,6 +57,8 @@ const stateManager = new StateManager();
 const matchmaking = new MatchmakingService(stateManager);
 
 const HEARTBEAT_INTERVAL = 15000; // 15 seconds
+// Two missed heartbeats (plus slack) means the connection is dead, not just slow
+const HEARTBEAT_TIMEOUT = HEARTBEAT_INTERVAL * 2 + 5000; // 35 seconds
 const MAINTENANCE_INTERVAL = 30000; // 30 seconds
 
 // ═══════════════════════════════════════════════════════════════
@@ -231,6 +233,8 @@ wss.on('connection', (ws, request) => {
 
     // Add user to state manager
     stateManager.addUser(userId, ws);
+    // Protocol-level pongs: browsers answer these automatically, even in background tabs
+    ws.on('pong', () => stateManager.updateLastPong(userId));
     send(userId, { type: 'ready', userId });
     
     logger.info(`🔌 User connected: ${userId}`);
@@ -466,9 +470,17 @@ const heartbeatTimer = setInterval(() => {
   
   logger.info(`💓 Heartbeat: ${stats.totalUsers} users, ${stats.activeSessions} sessions, V:${stats.searchingVideo}/A:${stats.searchingAudio}/T:${stats.searchingText} searching`);
 
+  // Drop ghosts: connections that stopped answering but never closed. terminate() fires the
+  // socket's 'close' handler, so the normal disconnect cleanup (queue, partner) runs.
+  stateManager.getUnresponsiveUsers(HEARTBEAT_TIMEOUT).forEach((user) => {
+    logger.info(`No heartbeat from ${user.userId} for ${Math.round((Date.now() - user.lastPong) / 1000)}s - dropping connection`);
+    user.ws.terminate();
+  });
+
   wss.clients.forEach((ws) => {
     if (ws.readyState === ws.OPEN) {
       try {
+        ws.ping();
         ws.send(JSON.stringify({ type: 'ping' }));
       } catch (error) {
         // silent

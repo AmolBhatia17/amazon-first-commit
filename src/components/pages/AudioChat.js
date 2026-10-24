@@ -1,10 +1,12 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiSkipBack, FiZap, FiVideo, FiPlay } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiUsers, FiSend, FiSmile, FiHeadphones, FiMessageCircle, FiSquare, FiSkipForward, FiSkipBack, FiZap, FiVideo, FiPlay, FiPhone } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { useCallModeSwitch, showVideoTrack } from '../../utils/useCallModeSwitch';
+import { watchPeerConnection } from '../../utils/connectionWatchdog';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import ChessBoard from '../ui/ChessBoard';
@@ -194,6 +196,62 @@ const RemoteBufferOverlay = styled.div`
   align-items: center;
   justify-content: center;
   background: rgba(28, 28, 30, 0.72);
+`;
+
+/* Live video upgrade: the stranger fills the stage, your camera sits top-left
+   (the mic tile already owns the opposite corner). Both are muted - sound
+   keeps playing through the hidden <audio>. The stage is transparent so the
+   voice view stays visible until the stranger's first frames arrive, instead
+   of a black screen while their camera starts. */
+const StageVideo = styled.video`
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: transparent;
+  transform: scaleX(-1);
+`;
+
+const SelfVideo = styled.video`
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 6;
+  width: 168px;
+  height: 118px;
+  object-fit: cover;
+  background: #000;
+  border: 2px solid ${({ theme }) => theme.colors.paper};
+  border-radius: ${({ theme }) => theme.radii.panel};
+  transform: scaleX(-1);
+
+  @media (max-width: 900px) {
+    left: 10px;
+    top: 12px;
+    width: 86px;
+    height: 116px;
+    border-radius: 14px;
+  }
+`;
+
+const CallModeNotice = styled.div`
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  width: max-content;
+  max-width: calc(100% - 32px);
 `;
 
 const AudioOverlayButton = styled.button`
@@ -1065,6 +1123,32 @@ function AudioChat() {
   const stunServerIndexRef = useRef(0);
   const connectionStartTimeRef = useRef(null);
   const establishmentRecordedRef = useRef(false);
+  const remoteVideoRef = useRef(null);
+  const localVideoRef = useRef(null);
+
+  // Only rendered after a live switch to video; tracks can land after the elements mount
+  const attachCallVideo = () => {
+    showVideoTrack(localVideoRef.current, localStreamRef.current?.getVideoTracks()[0]);
+    showVideoTrack(remoteVideoRef.current, remoteStreamRef.current?.getVideoTracks()[0]);
+  };
+
+  const {
+    callMode,
+    incomingVideoRequest,
+    awaitingVideoAnswer,
+    switchNotice,
+    switchToVoice,
+    requestVideo,
+    acceptVideoRequest,
+    declineVideoRequest,
+    handleCallModeMessage,
+    resetCallMode,
+  } = useCallModeSwitch({
+    peerRef: peerConnectionRef,
+    localStreamRef,
+    initialMode: 'voice',
+    onLocalVideoChange: attachCallVideo,
+  });
 
   const recordEstablishmentTime = () => {
     if (establishmentRecordedRef.current) return;
@@ -1193,8 +1277,10 @@ function AudioChat() {
         setRemoteStreamForVisualizer(remoteStreamRef.current);
         track.onunmute = () => {
           applyRemoteStream();
+          if (track.kind === 'video') attachCallVideo();
         };
         applyRemoteStream();
+        if (track.kind === 'video') attachCallVideo();
         setIsConnected(true);
         setIsWaiting(false);
         setShowRemoteBuffer(false);
@@ -1223,6 +1309,7 @@ function AudioChat() {
           const text = new TextDecoder().decode(data);
           let obj = null;
           try { obj = JSON.parse(text); } catch (_) {}
+          if (handleCallModeMessage(obj)) return;
           if (obj && obj.type === 'chess-move') {
             setChessState((prev) => {
               const next = applyChessMove(prev, { from: obj.from, to: obj.to, promotion: obj.promotion });
@@ -1251,18 +1338,10 @@ function AudioChat() {
       });
       const pc = peer._pc;
       if (pc) {
-        pc.oniceconnectionstatechange = () => {
-          const state = pc.iceConnectionState;
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            resetForRequeue('Connection lost. Rejoining queue...');
-          }
-        };
-        pc.onconnectionstatechange = () => {
-          const state = pc.connectionState;
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            resetForRequeue('Connection lost. Rejoining queue...');
-          }
-        };
+        // A brief 'disconnected' (e.g. while a camera starts) recovers by itself; only requeue if it lasts
+        watchPeerConnection(pc, () => {
+          if (peerConnectionRef.current === peer) resetForRequeue('Connection lost. Rejoining queue...');
+        });
       }
     } catch (error) {
       console.error('Error setting up WebRTC:', error);
@@ -1336,6 +1415,7 @@ function AudioChat() {
       localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
     cleanupPeer();
+    resetCallMode();
     triggerRemoteBuffer(true);
     setTimeout(() => {
       socketService.send({ type: 'join', mode: 'audio' });
@@ -1544,7 +1624,7 @@ function AudioChat() {
       setIsWaiting(true);
       setWaitingMessage('Looking for a partner...');
       triggerRemoteBuffer(true);
-      socketService.send({ type: 'join', mode: 'audio' });
+      // The 'join' itself is sent by the socket-listener effect once isStarted is set
     } catch (err) {
       setError('Failed to start chat. Please try again.');
       console.error('Error starting chat:', err);
@@ -1572,6 +1652,7 @@ function AudioChat() {
     
     cleanupPeer();
     cleanupStreams();
+    resetCallMode();
     socketService.disconnect();
     partnerIdRef.current = null;
   };
@@ -1612,8 +1693,9 @@ function AudioChat() {
 
   const skipPartner = async () => {
     if (!isStarted) return;
-    
+
     cleanupPeer();
+    resetCallMode();
     setIsConnected(false);
     setIsWaiting(true);
     setWaitingMessage('');
@@ -1759,6 +1841,10 @@ function AudioChat() {
     }
   }, [isConnected]);
 
+  useEffect(() => {
+    if (callMode === 'video') attachCallVideo();
+  }, [callMode, isConnected]);
+
   // Waiting message timeout
   useEffect(() => {
     let timer;
@@ -1893,6 +1979,10 @@ function AudioChat() {
     socketService.on('search-cancelled', handleSearchCancelled);
     socketService.on('error', handleError);
 
+    // Join only after the handlers exist: socketService drops messages nobody listens for,
+    // so a fast 'matched' reply used to be lost and leave this side stuck connecting
+    socketService.send({ type: 'join', mode: 'audio' });
+
     return () => {
       socketService.off('matched', handleMatch);
       socketService.off('signal', handleSignal);
@@ -1916,8 +2006,34 @@ function AudioChat() {
     return ({ chess: 'Chess', 'truth-and-dare': 'Truth and Dare' }[key] || key || '');
   })();
 
+  const isVideoCall = callMode === 'video';
+  const modeSwitchDisabled = !isConnected || awaitingVideoAnswer;
+  const onModeSwitch = isVideoCall ? switchToVoice : requestVideo;
+  const modeSwitchTitle = isVideoCall ? 'Switch back to voice only (camera off)' : 'Ask stranger to switch to video';
+  const modeSwitchLabel = awaitingVideoAnswer ? 'Asking...' : isVideoCall ? 'Voice only' : 'Video';
+
   return (
     <AudioChatContainer>
+      {incomingVideoRequest && (
+        <FunRequestOverlay>
+          <FunRequestCard>
+            <FunRequestText>
+              Stranger wants to switch to <strong>video</strong>. Turn your camera on?
+            </FunRequestText>
+            <FunRequestActions>
+              <StopButton
+                onClick={declineVideoRequest}
+                style={{ background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', border: 'none' }}
+              >
+                Stay on voice
+              </StopButton>
+              <StartChatButton onClick={acceptVideoRequest}>
+                Turn on camera
+              </StartChatButton>
+            </FunRequestActions>
+          </FunRequestCard>
+        </FunRequestOverlay>
+      )}
       {pendingFunRequest && (
         <FunRequestOverlay>
           <FunRequestCard>
@@ -1966,6 +2082,14 @@ function AudioChat() {
             {/* Hidden Audio Element for playing remote sound */}
             <HiddenAudioElement ref={remoteAudioRef} autoPlay />
 
+            {isConnected && isVideoCall && (
+              <>
+                <StageVideo ref={remoteVideoRef} autoPlay playsInline muted />
+                <SelfVideo ref={localVideoRef} autoPlay playsInline muted />
+              </>
+            )}
+            {switchNotice && <CallModeNotice>{switchNotice}</CallModeNotice>}
+
             {/* Remote Audio Visualizer */}
             <AudioFeed>
               {isConnected && remoteStreamForVisualizer ? (
@@ -2007,6 +2131,16 @@ function AudioChat() {
               </AudioOverlayButton>
             </AudioFeed>
               <MobileAudioControls>
+                {isStarted && (
+                  <MobileControlButton
+                    onClick={onModeSwitch}
+                    title={modeSwitchTitle}
+                    disabled={modeSwitchDisabled}
+                    style={{ opacity: modeSwitchDisabled ? 0.5 : 1 }}
+                  >
+                    {isVideoCall ? <FiPhone /> : <FiVideo />}
+                  </MobileControlButton>
+                )}
                 <MobileControlButton
                   onClick={skipPartner}
                   className="skip"
@@ -2097,6 +2231,14 @@ function AudioChat() {
                       )}
                     </FunMenuWrap>
                     <ChatControlsRight>
+                      <ControlButton
+                        onClick={onModeSwitch}
+                        title={modeSwitchTitle}
+                        disabled={modeSwitchDisabled}
+                      >
+                        <ButtonIcon>{isVideoCall ? <FiPhone /> : <FiVideo />}</ButtonIcon>
+                        {modeSwitchLabel}
+                      </ControlButton>
                       <StopButton
                         onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
                         title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}

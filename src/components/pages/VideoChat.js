@@ -1,10 +1,12 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiSkipBack, FiUsers, FiSend, FiSmile, FiMessageCircle, FiSquare, FiZap, FiHeadphones, FiPlay } from 'react-icons/fi';
+import { FiVideo, FiMic, FiMicOff, FiSkipForward, FiSkipBack, FiUsers, FiSend, FiSmile, FiMessageCircle, FiSquare, FiZap, FiHeadphones, FiPlay, FiPhone } from 'react-icons/fi';
 import SimplePeer from 'simple-peer';
 import Header from '../layout/Header';
 import { socketService } from '../../utils/socketService';
+import { useCallModeSwitch } from '../../utils/useCallModeSwitch';
+import { watchPeerConnection } from '../../utils/connectionWatchdog';
 import { getRtcConfig, ESTABLISHMENT_DELAY_THRESHOLD_MS, STUN_SERVERS } from '../../utils/webrtcStun';
 import { createInitialState, applyMove as applyChessMove } from '../../utils/chessEngine';
 import {
@@ -178,6 +180,24 @@ const RemoteBufferOverlay = styled.div`
   align-items: center;
   justify-content: center;
   background: rgba(28, 28, 30, 0.72);
+`;
+
+const CallModeNotice = styled.div`
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.paper};
+  color: ${({ theme }) => theme.colors.ink};
+  border: 1.5px solid ${({ theme }) => theme.colors.ink};
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  width: max-content;
+  max-width: calc(100% - 32px);
 `;
 
 const VideoOverlayButton = styled.button`
@@ -1146,6 +1166,35 @@ function VideoChat() {
   const connectionStartTimeRef = useRef(null);
   const establishmentRecordedRef = useRef(false);
 
+  // Re-point the self view after the camera track is swapped
+  const refreshLocalVideo = () => {
+    const video = localVideoRef.current;
+    const stream = localStreamRef.current;
+    if (!video || !stream) return;
+    video.srcObject = null;
+    video.srcObject = stream;
+    video.play?.().catch(() => {});
+  };
+
+  const {
+    callMode,
+    incomingVideoRequest,
+    awaitingVideoAnswer,
+    switchNotice,
+    switchToVoice,
+    requestVideo,
+    acceptVideoRequest,
+    declineVideoRequest,
+    handleCallModeMessage,
+    resetCallMode,
+    waitForCallMedia,
+  } = useCallModeSwitch({
+    peerRef: peerConnectionRef,
+    localStreamRef,
+    initialMode: 'video',
+    onLocalVideoChange: refreshLocalVideo,
+  });
+
   const recordEstablishmentTime = () => {
     if (establishmentRecordedRef.current) return;
     establishmentRecordedRef.current = true;
@@ -1227,7 +1276,11 @@ function VideoChat() {
       setError('');
       return true;
     } catch (err) {
-      setError('Camera blocked. Please enable it and try again.');
+      // A camera held by another app or browser tab is not a permission problem
+      const busy = err?.name === 'NotReadableError' || err?.name === 'AbortError';
+      setError(busy
+        ? 'Your camera is in use by another app or browser. Close it and try again.'
+        : 'Camera blocked. Please enable it and try again.');
       console.error('Error accessing camera:', err);
       setIsStarted(false);
       return false;
@@ -1312,6 +1365,7 @@ function VideoChat() {
           const text = new TextDecoder().decode(data);
           let obj = null;
           try { obj = JSON.parse(text); } catch (_) {}
+          if (handleCallModeMessage(obj)) return;
           if (obj && obj.type === 'chess-move') {
             setChessState((prev) => {
               const next = applyChessMove(prev, { from: obj.from, to: obj.to, promotion: obj.promotion });
@@ -1340,20 +1394,12 @@ function VideoChat() {
       });
       const pc = peer._pc;
       if (pc) {
-        pc.oniceconnectionstatechange = () => {
-          const state = pc.iceConnectionState;
-          console.log('ICE state', state);
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            resetForRequeue('Connection lost. Rejoining queue...');
-          }
-        };
-        pc.onconnectionstatechange = () => {
-          const state = pc.connectionState;
-          console.log('Peer connection state', state);
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            resetForRequeue('Connection lost. Rejoining queue...');
-          }
-        };
+        pc.oniceconnectionstatechange = () => console.log('ICE state', pc.iceConnectionState);
+        pc.onconnectionstatechange = () => console.log('Peer connection state', pc.connectionState);
+        // A brief 'disconnected' (e.g. while a camera starts) recovers by itself; only requeue if it lasts
+        watchPeerConnection(pc, () => {
+          if (peerConnectionRef.current === peer) resetForRequeue('Connection lost. Rejoining queue...');
+        });
       }
     } catch (error) {
       console.error('Error setting up WebRTC:', error);
@@ -1477,6 +1523,7 @@ function VideoChat() {
       localStreamRef.current.getAudioTracks().forEach(t => t.enabled = true);
     }
     cleanupPeer();
+    resetCallMode();
     triggerRemoteBuffer(true); // Keep visible while waiting in queue
     // Small delay to ensure cleanup is complete before rejoining at END of queue (FIFO)
     setTimeout(() => {
@@ -1691,7 +1738,7 @@ function VideoChat() {
       setIsWaiting(true);
       setWaitingMessage('Looking for a partner...');
       triggerRemoteBuffer(true); // Keep visible until matched
-      socketService.send({ type: 'join' });
+      // The 'join' itself is sent by the socket-listener effect once isStarted is set
     } catch (err) {
       setError('Failed to start chat. Please try again.');
       console.error('Error starting chat:', err);
@@ -1720,6 +1767,7 @@ function VideoChat() {
     
     cleanupPeer();
     cleanupStreams();
+    resetCallMode();
     socketService.disconnect();
     partnerIdRef.current = null;
   };
@@ -1761,9 +1809,10 @@ function VideoChat() {
 
   const skipPartner = async () => {
     if (!isStarted) return;
-    
+
     cleanupPeer();
-    
+    resetCallMode();
+
     setIsConnected(false);
     setIsWaiting(true);
     setWaitingMessage('');
@@ -2002,6 +2051,8 @@ function VideoChat() {
       socketService.send({ type: 'acknowledge' });
       console.log('[ws] acknowledged match with', data.partnerId);
 
+      // Camera may still be coming back if the last call ended in voice-only mode
+      await waitForCallMedia();
       await setupWebRTC(data.initiator);
     };
 
@@ -2108,6 +2159,10 @@ function VideoChat() {
     socketService.on('search-cancelled', handleSearchCancelled);
     socketService.on('error', handleError);
 
+    // Join only after the handlers exist: socketService drops messages nobody listens for,
+    // so a fast 'matched' reply used to be lost and leave this side stuck connecting
+    socketService.send({ type: 'join' });
+
     return () => {
       socketService.off('matched', handleMatch);
       socketService.off('signal', handleSignal);
@@ -2135,8 +2190,34 @@ function VideoChat() {
   // On mobile, use the full-screen video layout by default (WhatsApp-style) whenever not in FUN mode.
   const isMobileFullscreen = !isFunMode;
 
+  const isVoiceOnly = callMode === 'voice';
+  const modeSwitchDisabled = !isConnected || awaitingVideoAnswer;
+  const onModeSwitch = isVoiceOnly ? requestVideo : switchToVoice;
+  const modeSwitchTitle = isVoiceOnly ? 'Ask stranger to switch back to video' : 'Switch to voice only (camera off)';
+  const modeSwitchLabel = awaitingVideoAnswer ? 'Asking...' : isVoiceOnly ? 'Video' : 'Voice only';
+
   return (
     <VideoChatContainer>
+      {incomingVideoRequest && (
+        <FunRequestOverlay>
+          <FunRequestCard>
+            <FunRequestText>
+              Stranger wants to switch to <strong>video</strong>. Turn your camera on?
+            </FunRequestText>
+            <FunRequestActions>
+              <StopButton
+                onClick={declineVideoRequest}
+                style={{ background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', border: 'none' }}
+              >
+                Stay on voice
+              </StopButton>
+              <StartChatButton onClick={acceptVideoRequest}>
+                Turn on camera
+              </StartChatButton>
+            </FunRequestActions>
+          </FunRequestCard>
+        </FunRequestOverlay>
+      )}
       {pendingFunRequest && (
         <FunRequestOverlay>
           <FunRequestCard>
@@ -2199,12 +2280,20 @@ function VideoChat() {
                   <div>Stranger</div>
                 </VideoPlaceholder>
               )}
+              {/* Voice-only: the <video> stays mounted underneath because it plays the stranger's audio */}
+              {isConnected && isVoiceOnly && (
+                <VideoPlaceholder style={{ position: 'absolute', inset: 0 }}>
+                  <FiPhone />
+                  <div>Voice only</div>
+                </VideoPlaceholder>
+              )}
               {showRemoteBuffer && (
                 <RemoteBufferOverlay>
                   <BufferSpinner />
                 </RemoteBufferOverlay>
               )}
               <VideoLabel>Stranger</VideoLabel>
+              {switchNotice && <CallModeNotice>{switchNotice}</CallModeNotice>}
               <MobileVideoControls $hasSession={isStarted && !isFunMode}>
                 {!isStarted ? (
                   <MobileControlButton
@@ -2285,6 +2374,14 @@ function VideoChat() {
                       )}
                     </FunMenuWrap>
                     <MobileControlButton
+                      onClick={onModeSwitch}
+                      title={modeSwitchTitle}
+                      disabled={modeSwitchDisabled}
+                      style={{ opacity: modeSwitchDisabled ? 0.5 : 1 }}
+                    >
+                      {isVoiceOnly ? <FiVideo /> : <FiPhone />}
+                    </MobileControlButton>
+                    <MobileControlButton
                       onClick={skipPartner}
                       className="skip"
                       title="Skip to next stranger"
@@ -2315,6 +2412,11 @@ function VideoChat() {
                         <VideoPlaceholder>
                           <FiVideo />
                           <div>Your Camera</div>
+                        </VideoPlaceholder>
+                      )}
+                      {hasLocalStream && isVoiceOnly && (
+                        <VideoPlaceholder style={{ position: 'absolute', inset: 0 }} title="Camera off">
+                          <FiMic />
                         </VideoPlaceholder>
                       )}
                       <VideoOverlayButton
@@ -2414,6 +2516,14 @@ function VideoChat() {
                             )}
                           </FunMenuWrap>
                           <ChatControlsRight>
+                            <ControlButton
+                              onClick={onModeSwitch}
+                              title={modeSwitchTitle}
+                              disabled={modeSwitchDisabled}
+                            >
+                              <ButtonIcon>{isVoiceOnly ? <FiVideo /> : <FiPhone />}</ButtonIcon>
+                              {modeSwitchLabel}
+                            </ControlButton>
                             <StopButton
                               onClick={isWaiting && !isConnected ? cancelSearch : stopChat}
                               title={isWaiting && !isConnected ? "Cancel search" : "Stop chat"}
